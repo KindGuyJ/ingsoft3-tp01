@@ -1,0 +1,6 @@
+Por qué Git no pudo resolver el conflicto solo — y qué habría tenido que pasar para que nunca apareciera.
+No puede resolver el conflicto solo es un algoritmo que no tiene como funcion resolverlo, simplemente dejar que el humano decida y avisarle. Para que no pase o trabajas solo y no creas varias ramas; o no podes evitarlo porque no tiene sentido evitar que no se puedan editar varios archivos a la vez. Volveriamos al pasado para que no hubiera conflictos (lock).
+Qué problemas encontraste y cómo los solucionaste. Los tropiezos bien contados valen más que un camino perfecto: son los que demuestran que entendiste.
+No tuve problemas mas que entender que tenia que poner aca, supongo que conteste correctamente las preguntas de decisiones.
+Declaración de uso de IA: qué partes hiciste con ayuda de inteligencia artificial y cómo verificaste lo que te devolvió (§ Uso de IA del enunciado).
+Github uso IA para completar los titulos de los PR automaticamente cuando mergeaba los pullrequest en la web. A su vez la descripcion de las screenshots esta hecha con IA.
