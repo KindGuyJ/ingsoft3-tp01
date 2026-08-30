@@ -586,3 +586,189 @@ uno de tres; por qué el límite es dos y qué me haría cambiarlo; por qué cad
 aceptación de mi historia es verificable y "que el CI funcione bien" no lo sería; por qué el
 bug va al costado y no colgando de la historia; y por qué un `Closes #N` tiene que apuntar al
 número de la tarea y no al de la historia.
+
+---
+
+# Decisiones — TP4
+
+> En este práctico tampoco hay `evidencias.md`: el repositorio es público, así que quien
+> corrige abre la pestaña *Actions* y ve las corridas y las capas reutilizadas, abre el
+> PR #16 y ve los checks *Required* bloqueando el merge y la secuencia de rojo a verde, y
+> ve el badge al entrar al repo. Sacar capturas de lo mismo sería duplicar lo que ya se ve.
+
+## 1. La estructura del pipeline: dos jobs en paralelo
+
+Mi app tiene **dos Dockerfiles** —`app/backend/Dockerfile` y `app/frontend/Dockerfile`,
+los del TP2— así que el pipeline tiene dos jobs, `build-backend` y `build-frontend`. No es
+una decisión estética: son dos imágenes distintas, y cada job construye una.
+
+**Por qué en paralelo y no encadenados.** Porque no dependen entre sí: ninguna de las dos
+imágenes necesita nada que produzca la otra. El frontend se empaqueta con Vite y lo sirve
+nginx; el backend compila dos binarios de Go. No hay `needs:` entre los jobs justamente
+porque no hay nada que esperar. Encadenarlos duplicaría el tiempo de la corrida a cambio de
+nada.
+
+**Qué NO comparten dos jobs: el filesystem.** Cada uno arranca en un runner limpio y propio,
+y todo lo que queda adentro se pierde al terminar. Si el frontend necesitara el binario del
+backend, no alcanzaría con construirlo antes: habría que pasarlo como **artefacto** entre
+jobs, o hacer una sola imagen. Lo único que comparten hoy es el cache, y lo comparten a
+través de un almacén externo, no del disco.
+
+**El beneficio concreto se vio en el PR #16**: `build-backend` en rojo y `build-frontend` en
+verde **al mismo tiempo**. El rojo no sólo dice que algo se rompió, dice **dónde**. Con un
+solo job que construyera las dos imágenes, esa información se perdía.
+
+**Los ids de los jobs son el nombre de los checks.** `build-backend` y `build-frontend` es
+literal lo que exige la protección de `main`. Por eso ningún job define `name:`: si le
+pusiera uno, el check pasaría a llamarse así y el gate quedaría esperando un check que ya no
+existe, bloqueando todos los PRs.
+
+## 2. Los triggers: `pull_request` y `push` a `main`
+
+**`pull_request` es el que hace el trabajo.** Corre *antes* del merge, sobre el resultado
+propuesto —la mezcla de mi rama con `main`— y es el que alimenta el gate. Es el único que
+puede impedir que algo roto entre.
+
+**`push` a `main` corre después, cuando ya no puede frenar nada**, y sin embargo lo tengo por
+dos motivos concretos: es la corrida que **lee el badge** (sin ella el badge no tiene estado
+de dónde leer), y es la que **deja el cache en la rama base**, para que cualquier PR nuevo lo
+aproveche ya en su primera corrida. Con el gate puesto, esta corrida rara vez sorprende: lo
+que iba a romper lo frenó antes la corrida del PR.
+
+## 3. Qué cachea el pipeline, y qué pasa si el cache desaparece
+
+Lo que se cachea son **las capas de mis imágenes**, y viajan al cache de GitHub Actions
+(`type=gha`) — no al Docker de mi máquina ni al del runner, que nace vacío en cada corrida y
+se destruye al terminar.
+
+Las capas que valen la pena están puestas a propósito en el orden del Dockerfile del TP2:
+
+- **Backend**: `COPY go.mod go.sum` + `RUN go mod download`. Sólo se rehacen si cambian las
+  dependencias, no cuando toco código.
+- **Frontend**: `COPY package*.json` + `RUN npm ci`. Misma idea con el lockfile.
+- **Lo que no se reutiliza cuando cambio código**: de `COPY . .` para abajo — los dos
+  `go build` y el `npm run build`. Es inevitable y es correcto: cambió la entrada de esas
+  capas.
+
+**Lo que medí.** En la segunda corrida del PR #14 (run `33293001397`): **11 capas `CACHED` en
+el backend y 7 en el frontend**, con el `importing cache manifest from gha:…` arriba de todo.
+Un detalle honesto de esa corrida: la disparé con un **commit vacío**, así que reutilizó
+*todo*, incluido `COPY . .`. Eso no es un error de medición — es que Docker hashea el
+**contenido de los archivos**, no el SHA del commit: si nada cambió, nada se rehace.
+
+**`scope=backend` y `scope=frontend` no son opcionales.** Sin eso los dos jobs comparten el
+mismo estante por default y se pisan: el último en terminar deja su cache y borra el del
+otro. El síntoma parece azar —un job muestra `CACHED` y el otro no, y cuál cambia en cada
+corrida— y no da ningún error.
+
+**Si el cache desaparece, no pasa nada, salvo tiempo.** La plataforma lo desaloja cuando
+quiere y tiene límite de tamaño; el pipeline construye igual, sólo que desde cero. La prueba
+está en mi propio historial: la **primera** corrida del PR #14 (1m27s) se construyó sin
+ninguna capa guardada y dio verde. El cache es una **optimización, no un insumo**. Si el
+pipeline fallara sin cache, no tendría un cache: tendría una dependencia escondida, y eso es
+un bug.
+
+**Lo que el pipeline NO guarda: las imágenes.** Nacen y mueren en el runner (`push: false`).
+El lugar de una imagen es un **registry** —lo hice a mano en el TP2 §3.7, contra ghcr.io— y
+que las publique el pipeline es tema del TP6. La salida de este pipeline es otra, y no es
+menor: **el check en verde que habilita el merge**.
+
+## 4. Por qué el pipeline construye con mi Dockerfile
+
+Porque si el workflow corriera `go build` y `npm run build` por su cuenta, tendría **dos
+definiciones de build** —la del pipeline y la del Dockerfile— que tarde o temprano divergen.
+El día que se separen, CI estaría verificando una compilación **distinta** de la que después
+se despliega, y el error aparecería recién en el deploy.
+
+La consecuencia se ve mirando el archivo: **en todo el `ci.yml` no hay una sola línea de Go
+ni de Node**. El workflow no sabe qué stack hay adentro; eso lo sabe mi Dockerfile. Por eso
+el mismo archivo le serviría a un compañero con otro stack.
+
+**Una adaptación propia de este repo:** el `context` es `./app/backend` y `./app/frontend`, no
+`./backend`. Este repositorio contiene todos los TPs de la materia y la aplicación cuelga de
+`app/`. Con la ruta del enunciado el error es `failed to read dockerfile`.
+
+## 5. El pipeline como gate
+
+Hoy `main` exige **dos cosas** para aceptar un merge:
+
+1. Que el cambio venga por **Pull Request** (TP1).
+2. Que **los dos checks estén en verde** (`build-backend` y `build-frontend`).
+
+**`strict: true`** agrega una tercera condición más sutil: que la rama esté **actualizada con
+`main`** antes de mergear. Importa porque un verde viejo se sacó contra un `main` que ya no
+existe: verifica una mezcla que no es la que se va a integrar.
+
+**Los approvals van en 0, a propósito.** El trabajo es individual y GitHub nunca deja aprobar
+el propio PR, así que exigir 1 me dejaría sin poder mergear nunca. Lo que bloquea el merge
+acá no es una aprobación humana: es el pipeline. La revisión humana la hago igual —leo mi
+propio diff en *Files changed* antes de mergear—, sólo que la plataforma no puede exigírmela.
+`enforce_admins: true` sigue activo, así que la regla me alcanza a mí también.
+
+**La demostración del gate es el PR #16.** La secuencia completa quedó registrada:
+
+- Agregué `var _ = paqueteQueNoExiste.Nada` al final de `app/backend/cmd/api/main.go`.
+- La corrida falló en el paso de build, en `Dockerfile:11`, con
+  `cmd/api/main.go:127:9: undefined: paqueteQueNoExiste`. Es un error de **compilación**: mi
+  backend es Go, así que romper el código alcanza. (En un stack que no compila ni empaqueta
+  habría que romper una dependencia, porque el `docker build` nunca ejecuta el código.)
+- `build-frontend` quedó en verde: un solo check en rojo ya bloquea el merge.
+- Un commit de fix, el pipeline re-corrió solo, y el merge se destrabó.
+
+**El PR #15 quedó abierto a propósito mientras tanto.** Al mergear el #16, apareció en el #15
+el botón **Update branch**: su verde había quedado viejo. Eso es `strict: true` actuando, y
+con un solo PR abierto no se puede ver.
+
+## 6. Problemas que encontré y cómo los resolví
+
+**El `context` del enunciado no era el mío.** Los ejemplos usan `./backend`; mi app está en
+`app/backend`. El síntoma es claro (`failed to read dockerfile`) pero es el primer paso donde
+se falla.
+
+**El job del TP3 se llamaba `build`.** Al reemplazar el esqueleto, ese id desapareció y en su
+lugar quedaron `build-backend` y `build-frontend`. Si hubiera configurado el gate antes de
+ese cambio, habría quedado exigiendo un check que ya no existía y ningún PR se habría podido
+mergear. Por eso el orden fue: primero el workflow andando, después el gate.
+
+**Las dos corridas del cache tienen que ser consecutivas, no simultáneas.** El cache se sube
+recién **al terminar** la corrida. Si empujo los dos commits seguidos, las corridas se
+solapan y cuando la segunda empieza a construir la primera todavía no subió nada: no aparece
+ningún `CACHED` y parece que el cache no funciona. Lo resolví esperando con `gh run watch` a
+que terminara la primera, y recién ahí disparando la segunda con
+`git commit --allow-empty`.
+
+**La pantalla de branch protection no guarda al tildar.** Marqué *Require status checks*,
+busqué los dos checks, los agregué… y me fui de la página sin bajar hasta el botón verde
+**Save changes** del fondo. No hay ningún aviso: la configuración simplemente no existe.
+Lo detecté consultando la API —`required_status_checks` volvía vacío— y no mirando la
+pantalla, que es donde parecía estar todo bien.
+
+## 7. Declaración de uso de IA
+
+Usé **Claude Code** para redactar el `ci.yml`, para armar la secuencia de comandos `gh` de
+este práctico y para ordenar este documento.
+
+**Las decisiones que se evalúan las tomé yo:** cuántos jobs y por qué en paralelo, qué
+triggers y para qué sirve cada uno, dónde poner el `scope` del cache, y las dos condiciones
+que exige `main` para mergear.
+
+**Cómo lo verifiqué — y por qué acá no alcanzaba con el verde.** Un pipeline en verde no
+prueba nada por sí solo: el esqueleto del TP3 también daba verde, y no verificaba
+absolutamente nada (sólo hacía checkout). La verificación fue **provocar el rojo**: romper el
+build a propósito y comprobar que el check fallara *y* que el merge quedara bloqueado. Eso es
+el PR #16.
+
+Los tres controles restantes los hice contra la API y los logs, no contra la pantalla:
+
+- que los jobs se llamen exactamente `build-backend` y `build-frontend` (`gh run view --json jobs`);
+- que `required_status_checks` tenga esos dos contexts y `strict: true` (`gh api …/protection`)
+  — este control es el que encontró que la configuración web no se había guardado;
+- que la segunda corrida realmente reutilizara capas, buscando `CACHED` en el log del build.
+
+**Qué tengo que poder explicar en la defensa:** por qué dos jobs y qué no comparten entre sí;
+qué diferencia hay entre correr en `push` y en `pull_request`, y por qué tengo los dos; qué
+capas concretas de *mis* Dockerfiles se reutilizan y cuáles no; por qué el pipeline seguiría
+funcionando sin cache y qué significaría que fallara; por qué construyo con el Dockerfile en
+vez de compilar en el workflow; qué significa `strict: true`; y qué conceptos de este workflow
+sobrevivirían si mañana migrara a Azure Pipelines (los triggers, los jobs, los steps y el
+gate — cambia el YAML y el nombre de cada cosa, no la estructura).
