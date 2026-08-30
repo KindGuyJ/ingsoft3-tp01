@@ -1,0 +1,70 @@
+# Proyecto de Compose PROPIO, distinto del de docker-compose.yml
+# (que se llama "tienda-indumentaria"). Sin esta linea Compose derivaria el
+# nombre de la carpeta y este stack quedaria como "app".
+#
+# Al ser otro proyecto, los volumenes tambien son otros
+# (tienda-indumentaria-registry_db_data, no tienda-indumentaria_db_data): este
+# stack arranca con la base vacia, que es exactamente lo que se quiere para
+# probar que las imagenes publicadas levantan solas, sin datos heredados del
+# stack de build.
+#
+# Ojo: los puertos publicados son los mismos que los del otro compose, asi que
+# los dos stacks no pueden estar levantados a la vez. Antes de este:
+#   docker compose down
+name: tienda-indumentaria-registry
+
+services:
+  # ==================== Base de datos ====================
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASS}
+      MYSQL_DATABASE: ${DB_SCHEMA}
+    volumes:
+      # Volumen NOMBRADO (no bind mount): los datos sobreviven a que el
+      # contenedor se destruya y se recree.
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${DB_PASS}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  # ==================== API ====================
+  backend:
+    image: ghcr.io/kindguyj/tienda-backend:v2.0.0
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_SCHEMA: ${DB_SCHEMA}
+      JWT_SECRET: ${JWT_SECRET}
+      UMBRAL_ENVIO_GRATIS: ${UMBRAL_ENVIO_GRATIS}
+      COSTO_ENVIO: ${COSTO_ENVIO}
+      UPLOADS_DIR: /app/uploads
+      MAX_IMAGEN_MB: ${MAX_IMAGEN_MB}
+    volumes:
+      # Segundo caso de persistencia, ademas de la base: las imagenes que sube
+      # el admin. Buen material para la defensa.
+      - uploads_data:/app/uploads
+    ports:
+      - "8080:8080"   # para curl/Postman; el browser entra por el 3000
+    depends_on:
+      db:
+        # No alcanza con que el contenedor haya arrancado: hay que esperar a
+        # que MySQL acepte conexiones. Eso es lo que agrega service_healthy.
+        condition: service_healthy
+
+  # ==================== Frontend ====================
+  frontend:
+    image: ghcr.io/kindguyj/tienda-frontend:v2.0.0
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  db_data:
+  uploads_data:

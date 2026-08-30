@@ -46,6 +46,7 @@ type VarianteResp struct {
 }
 
 type ImagenResp struct {
+	ID      uint   `json:"id"`
 	URL     string `json:"url"`
 	Color   string `json:"color,omitempty"`
 	Orden   int    `json:"orden"`
@@ -53,13 +54,17 @@ type ImagenResp struct {
 }
 
 type ProductoResp struct {
-	ID          uint           `json:"id"`
-	Nombre      string         `json:"nombre"`
-	Descripcion string         `json:"descripcion"`
-	Precio      float64        `json:"precio"`
-	Categoria   string         `json:"categoria"`
-	Variantes   []VarianteResp `json:"variantes"`
-	Imagenes    []ImagenResp   `json:"imagenes"`
+	ID          uint    `json:"id"`
+	Nombre      string  `json:"nombre"`
+	Descripcion string  `json:"descripcion"`
+	Precio      float64 `json:"precio"`
+	Categoria   string  `json:"categoria"`
+	// Activo viaja en la respuesta porque el panel de admin necesita
+	// distinguir un producto dado de baja de uno vigente. En el catalogo
+	// publico siempre llega true: los de baja no se listan.
+	Activo    bool           `json:"activo"`
+	Variantes []VarianteResp `json:"variantes"`
+	Imagenes  []ImagenResp   `json:"imagenes"`
 }
 
 type PedidoItemResp struct {
@@ -99,6 +104,13 @@ type ProductoRequest struct {
 	Precio      float64           `json:"precio" binding:"gt=0"`
 	Categoria   string            `json:"categoria"`
 	Variantes   []VarianteRequest `json:"variantes" binding:"required,min=1,dive"`
+}
+
+// StockRequest es la correccion manual de stock de una variante.
+// Puntero para distinguir "no vino en el body" de "vino en 0", que es un valor
+// legitimo (se agoto).
+type StockRequest struct {
+	Stock *int `json:"stock" binding:"required"`
 }
 
 type ProductoUpdateRequest struct {

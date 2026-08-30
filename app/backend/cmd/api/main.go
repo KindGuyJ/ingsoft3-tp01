@@ -46,11 +46,20 @@ func main() {
 	pedidoRepo := repository.NuevoPedidoRepo(db)
 	productoRepo := repository.NuevoProductoRepo(db)
 	usuarioRepo := repository.NuevoUsuarioRepo(db)
+	imagenRepo := repository.NuevoImagenRepo(db)
+
+	// El almacen es lo unico que sabe que las imagenes van a un disco. El
+	// service solo ve la interfaz: en el TP6, cambiarlo por object storage es
+	// reemplazar esta linea.
+	almacen := repository.NuevoAlmacenDisco(cfg.UploadsDir)
 
 	pedidosSvc := services.NuevoPedidosService(
 		varianteRepo, pedidoRepo, cfg.UmbralEnvioGratis, cfg.CostoEnvio,
 	)
 	productosSvc := services.NuevoProductosService(productoRepo, varianteRepo)
+	imagenesSvc := services.NuevoImagenesService(
+		productoRepo, imagenRepo, almacen, cfg.MaxImagenBytes,
+	)
 
 	// El secreto y la duracion del token se resuelven ACA y se le pasan al
 	// service como una funcion. Asi services/ no importa middleware/, que
@@ -62,8 +71,14 @@ func main() {
 	usuariosCtl := controllers.NuevoUsuariosController(usuariosSvc)
 	productosCtl := controllers.NuevoProductosController(productosSvc)
 	pedidosCtl := controllers.NuevoPedidosController(pedidosSvc)
+	imagenesCtl := controllers.NuevoImagenesController(imagenesSvc)
 
 	r := gin.Default()
+
+	// Cuanto de un multipart se buferea en memoria antes de spoolear a disco.
+	// No es el limite de subida (ese es cfg.MaxImagenBytes, y lo aplica el
+	// service): es solo cuanta RAM se usa mientras se parsea.
+	r.MaxMultipartMemory = 8 << 20 // 8 MB
 
 	// Healthcheck: lo usa el healthcheck del compose y, mas adelante, el
 	// pipeline de CD del TP6 para saber si el deploy quedo sano.
@@ -94,6 +109,11 @@ func main() {
 		admin.POST("/productos", productosCtl.Crear)
 		admin.PUT("/productos/:id", productosCtl.Editar)
 		admin.POST("/productos/:id/variantes", productosCtl.AgregarVariante)
+		admin.PATCH("/productos/:id/variantes/:varianteId", productosCtl.ActualizarStock)
+		// El listado del panel: incluye los productos dados de baja, que el
+		// catalogo publico no devuelve.
+		admin.GET("/admin/productos", productosCtl.ListarParaAdmin)
+		admin.POST("/productos/:id/imagenes", imagenesCtl.Subir)
 		admin.PATCH("/pedidos/:id/estado", pedidosCtl.CambiarEstado)
 	}
 

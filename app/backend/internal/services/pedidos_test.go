@@ -84,7 +84,9 @@ func (f *fakePedidoRepo) ActualizarEstado(id uint, estado string) error {
 
 // helper: arma un service con una remera negra M, precio 10000, stock 5.
 func setup() (*PedidosService, *fakeVarianteRepo, *fakePedidoRepo) {
-	prod := &dao.Producto{ID: 1, Nombre: "Remera basica", Precio: 10000}
+	// Activo va explicito: desde la regla 9 el checkout lo mira, y un fixture
+	// con el cero-value (false) haria fallar todos los tests de compra.
+	prod := &dao.Producto{ID: 1, Nombre: "Remera basica", Precio: 10000, Activo: true}
 	vr := &fakeVarianteRepo{data: map[uint]*dao.Variante{
 		1: {ID: 1, ProductoID: 1, Talle: "M", Color: "Negro", Stock: 5, Producto: prod},
 	}}
@@ -261,5 +263,52 @@ func TestCheckout_CarritoVacio(t *testing.T) {
 		t.Fatal("se esperaba error con carrito vacio")
 	} else if k := kindDe(t, err); k != dom.KindValidacion {
 		t.Errorf("kind = %v, se esperaba KindValidacion", k)
+	}
+}
+
+// --- Regla 9: un producto dado de baja no se vende --------------------------
+
+func TestCheckout_ProductoDadoDeBaja(t *testing.T) {
+	s, vr, pr := setup()
+	// La baja es logica: la variante sigue existiendo y con stock. Lo que
+	// cambia es el estado del producto.
+	vr.data[1].Producto.Activo = false
+
+	_, err := s.Checkout(7, []ItemCarrito{{VarianteID: 1, Cantidad: 2}})
+	if err == nil {
+		t.Fatal("se esperaba error: el producto esta dado de baja")
+	}
+	// Conflicto y no NoEncontrado: la variante existe, la rechaza el estado.
+	if k := kindDe(t, err); k != dom.KindConflicto {
+		t.Errorf("kind = %v, se esperaba KindConflicto", k)
+	}
+	// Esconderlo del catalogo no alcanzaba: esto es lo que impide comprarlo
+	// con un POST directo a /api/pedidos.
+	if vr.data[1].Stock != 5 {
+		t.Errorf("el stock cambio a %d; un checkout rechazado no descuenta", vr.data[1].Stock)
+	}
+	if len(pr.creados) != 0 {
+		t.Error("no se tiene que crear el pedido")
+	}
+}
+
+func TestCheckout_UnItemDeBajaRechazaElCarritoEntero(t *testing.T) {
+	s, vr, pr := setup()
+	// Segundo producto, este si a la venta.
+	otro := &dao.Producto{ID: 2, Nombre: "Buzo canguro", Precio: 30000, Activo: true}
+	vr.data[2] = &dao.Variante{ID: 2, ProductoID: 2, Talle: "L", Color: "Gris", Stock: 4, Producto: otro}
+	vr.data[1].Producto.Activo = false
+
+	// El de baja va segundo: la validacion completa pasa ANTES de tocar nada,
+	// asi que tampoco se descuenta el stock del primero.
+	_, err := s.Checkout(7, []ItemCarrito{{VarianteID: 2, Cantidad: 1}, {VarianteID: 1, Cantidad: 1}})
+	if k := kindDe(t, err); k != dom.KindConflicto {
+		t.Fatalf("kind = %v, se esperaba KindConflicto", k)
+	}
+	if vr.data[2].Stock != 4 {
+		t.Errorf("se desconto stock del item valido: quedo en %d", vr.data[2].Stock)
+	}
+	if len(pr.creados) != 0 {
+		t.Error("no se tiene que crear el pedido")
 	}
 }

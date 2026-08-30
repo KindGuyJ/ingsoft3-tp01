@@ -29,6 +29,12 @@ type Config struct {
 	CostoEnvio        float64
 
 	UploadsDir string
+	// Tamano maximo de una imagen subida por el admin, en bytes.
+	//
+	// Va por entorno porque tiene que quedar por DEBAJO del client_max_body_size
+	// de nginx: si nginx corta primero, el cliente recibe un 413 crudo en vez
+	// del 400 explicado del backend. Ver frontend/nginx.conf.
+	MaxImagenBytes int64
 }
 
 func Cargar() (*Config, error) {
@@ -58,6 +64,15 @@ func Cargar() (*Config, error) {
 	if c.CostoEnvio, err = getFloat("COSTO_ENVIO", 5000); err != nil {
 		return nil, err
 	}
+
+	mb, err := getFloat("MAX_IMAGEN_MB", 5)
+	if err != nil {
+		return nil, err
+	}
+	if mb <= 0 {
+		return nil, fmt.Errorf("MAX_IMAGEN_MB debe ser mayor a cero, llego %v", mb)
+	}
+	c.MaxImagenBytes = int64(mb * 1024 * 1024)
 
 	// Fallar temprano y ruidoso es mejor que arrancar con un secreto vacio
 	// y firmar tokens que cualquiera puede falsificar.

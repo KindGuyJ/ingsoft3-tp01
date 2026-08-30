@@ -66,9 +66,12 @@ var transicionesValidas = map[string][]string{
 //  1. El carrito no puede estar vacio, ni tener cantidades <= 0.
 //  2. Cada variante tiene que existir.
 //  3. No se puede pedir mas cantidad que el stock disponible (regla 1).
-//  4. El precio se congela como snapshot (regla 4).
-//  5. Total = suma de subtotales + envio, gratis desde el umbral (regla 3).
-//  6. Se descuenta el stock exactamente por lo comprado (regla 2).
+//  4. El producto tiene que estar activo: uno dado de baja no se vende mas
+//     (regla 9). Se valida aca, y no solo escondiendolo del catalogo, porque
+//     esconderlo no impide un POST /api/pedidos con el id de la variante.
+//  5. El precio se congela como snapshot (regla 4).
+//  6. Total = suma de subtotales + envio, gratis desde el umbral (regla 3).
+//  7. Se descuenta el stock exactamente por lo comprado (regla 2).
 func (s *PedidosService) Checkout(usuarioID uint, carrito []ItemCarrito) (*dao.Pedido, error) {
 	if len(carrito) == 0 {
 		return nil, dom.Validacion("el carrito esta vacio")
@@ -104,6 +107,12 @@ func (s *PedidosService) Checkout(usuarioID uint, carrito []ItemCarrito) (*dao.P
 		}
 		if v.Producto == nil {
 			return nil, dom.Interno("la variante no trae su producto cargado", nil)
+		}
+		// Regla 9: dar de baja un producto lo saca de la venta, no solo del
+		// catalogo. Es Conflicto y no NoEncontrado porque la variante existe:
+		// lo que rechaza la compra es el estado del producto.
+		if !v.Producto.Activo {
+			return nil, dom.Conflicto("el producto %q ya no esta a la venta", v.Producto.Nombre)
 		}
 
 		item := dao.PedidoItem{

@@ -9,26 +9,33 @@ import (
 )
 
 // ProductoRepo es lo que el ABM de productos necesita de la persistencia.
+//
+// Listar recibe soloActivos en vez de tener dos metodos: el catalogo publico lo
+// pide en true y el panel de admin en false. Que el filtro sea un parametro
+// obliga a decidirlo en cada llamada, en vez de que sea un default invisible.
 type ProductoRepo interface {
-	Listar(categoria string) ([]dao.Producto, error)
+	Listar(categoria string, soloActivos bool) ([]dao.Producto, error)
 	BuscarPorID(id uint) (*dao.Producto, error)
 	Crear(p *dao.Producto) error
 	Actualizar(p *dao.Producto) error
 }
 
-// VarianteAltaRepo esta separada de VarianteRepo (la que usa PedidosService) a
-// proposito: el checkout solo lee stock y lo actualiza, mientras que el ABM da
-// de alta variantes. Interfaces chicas = fakes chicos en los tests.
-type VarianteAltaRepo interface {
+// VarianteABMRepo esta separada de VarianteRepo (la que usa PedidosService) a
+// proposito: el checkout descuenta stock por una compra, mientras que el ABM da
+// de alta variantes y corrige el stock a mano. Interfaces chicas = fakes chicos
+// en los tests.
+type VarianteABMRepo interface {
 	Crear(v *dao.Variante) error
+	BuscarPorID(id uint) (*dao.Variante, error)
+	ActualizarStock(id uint, nuevoStock int) error
 }
 
 type ProductosService struct {
 	productos ProductoRepo
-	variantes VarianteAltaRepo
+	variantes VarianteABMRepo
 }
 
-func NuevoProductosService(p ProductoRepo, v VarianteAltaRepo) *ProductosService {
+func NuevoProductosService(p ProductoRepo, v VarianteABMRepo) *ProductosService {
 	return &ProductosService{productos: p, variantes: v}
 }
 
@@ -59,9 +66,21 @@ type ProductoEditado struct {
 	Activo      *bool
 }
 
-// Listar devuelve el catalogo activo, opcionalmente filtrado por categoria.
+// Listar devuelve el catalogo ACTIVO, opcionalmente filtrado por categoria.
+// Es lo que ve cualquiera: un producto dado de baja no se vende mas.
 func (s *ProductosService) Listar(categoria string) ([]dao.Producto, error) {
-	ps, err := s.productos.Listar(strings.TrimSpace(categoria))
+	return s.listar(categoria, true)
+}
+
+// ListarTodos incluye tambien los dados de baja. Solo lo llama el panel de
+// admin: si un producto desaparecido de la lista no se puede ver, tampoco se
+// puede volver a dar de alta, y la baja se vuelve irreversible desde la UI.
+func (s *ProductosService) ListarTodos(categoria string) ([]dao.Producto, error) {
+	return s.listar(categoria, false)
+}
+
+func (s *ProductosService) listar(categoria string, soloActivos bool) ([]dao.Producto, error) {
+	ps, err := s.productos.Listar(strings.TrimSpace(categoria), soloActivos)
 	if err != nil {
 		return nil, dom.Interno("no se pudieron listar los productos", err)
 	}
@@ -75,6 +94,26 @@ func (s *ProductosService) VerDetalle(id uint) (*dao.Producto, error) {
 		return nil, dom.Interno("no se pudo leer el producto", err)
 	}
 	if p == nil {
+		return nil, dom.NoEncontrado("el producto %d no existe", id)
+	}
+	return p, nil
+}
+
+// VerDetallePublico es lo que ve cualquiera desde el catalogo: un producto dado
+// de baja no existe.
+//
+// Es un metodo aparte y NO un filtro dentro de VerDetalle a proposito: Editar y
+// AgregarVariante llaman a VerDetalle, asi que filtrar ahi dejaria de permitir
+// editar o reactivar un producto dado de baja, que es justo lo que el panel
+// necesita poder hacer.
+func (s *ProductosService) VerDetallePublico(id uint) (*dao.Producto, error) {
+	p, err := s.VerDetalle(id)
+	if err != nil {
+		return nil, err
+	}
+	if !p.Activo {
+		// Mismo mensaje que si no existiera: para quien mira el catalogo, no
+		// existe. Que exista pero este de baja es informacion interna.
 		return nil, dom.NoEncontrado("el producto %d no existe", id)
 	}
 	return p, nil
@@ -205,6 +244,39 @@ func (s *ProductosService) AgregarVariante(productoID uint, in VarianteNueva) (*
 	if err := s.variantes.Crear(v); err != nil {
 		return nil, dom.Interno("no se pudo crear la variante", err)
 	}
+	return v, nil
+}
+
+// ActualizarStock corrige a mano el stock de una variante (mercaderia que
+// llego, un recuento, una rotura).
+//
+// Es una operacion distinta del descuento del checkout y por eso vive aparte:
+// el checkout RESTA lo comprado, esto FIJA un valor. Mezclarlas haria que un
+// error de tipeo del admin se pareciera a una compra.
+//
+// Reglas:
+//   - el stock no puede quedar negativo
+//   - la variante tiene que pertenecer al producto de la ruta
+func (s *ProductosService) ActualizarStock(productoID, varianteID uint, stock int) (*dao.Variante, error) {
+	if stock < 0 {
+		return nil, dom.Validacion("el stock no puede ser negativo")
+	}
+
+	v, err := s.variantes.BuscarPorID(varianteID)
+	if err != nil {
+		return nil, dom.Interno("no se pudo leer la variante", err)
+	}
+	// Que la variante sea de OTRO producto se responde igual que si no
+	// existiera: la ruta la elige quien llama, y confirmarle que ese id existe
+	// en otro lado no le sirve para nada legitimo.
+	if v == nil || v.ProductoID != productoID {
+		return nil, dom.NoEncontrado("la variante %d no existe en el producto %d", varianteID, productoID)
+	}
+
+	if err := s.variantes.ActualizarStock(v.ID, stock); err != nil {
+		return nil, dom.Interno("no se pudo actualizar el stock", err)
+	}
+	v.Stock = stock
 	return v, nil
 }
 

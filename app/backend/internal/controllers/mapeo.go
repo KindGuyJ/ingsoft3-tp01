@@ -86,13 +86,8 @@ func aProductoResp(p *dao.Producto) dto.ProductoResp {
 	}
 
 	imagenes := make([]dto.ImagenResp, 0, len(p.Imagenes))
-	for _, i := range p.Imagenes {
-		imagenes = append(imagenes, dto.ImagenResp{
-			URL:     i.URL,
-			Color:   i.Color,
-			Orden:   i.Orden,
-			AltText: i.AltText,
-		})
+	for i := range p.Imagenes {
+		imagenes = append(imagenes, aImagenResp(&p.Imagenes[i]))
 	}
 
 	return dto.ProductoResp{
@@ -101,9 +96,14 @@ func aProductoResp(p *dao.Producto) dto.ProductoResp {
 		Descripcion: p.Descripcion,
 		Precio:      p.Precio,
 		Categoria:   p.Categoria,
+		Activo:      p.Activo,
 		Variantes:   variantes,
 		Imagenes:    imagenes,
 	}
+}
+
+func aImagenResp(i *dao.Imagen) dto.ImagenResp {
+	return dto.ImagenResp{ID: i.ID, URL: i.URL, Color: i.Color, Orden: i.Orden, AltText: i.AltText}
 }
 
 func aVarianteResp(v *dao.Variante) dto.VarianteResp {

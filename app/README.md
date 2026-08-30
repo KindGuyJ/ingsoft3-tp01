@@ -67,18 +67,45 @@ docker compose ps
 | `POST` | `/api/productos` | admin |
 | `PUT` | `/api/productos/:id` | admin |
 | `POST` | `/api/productos/:id/variantes` | admin |
+| `POST` | `/api/productos/:id/imagenes` | admin — **multipart**, ver abajo |
 | `PATCH` | `/api/pedidos/:id/estado` | admin |
 
 El token va en `Authorization: Bearer <token>` y sale del login.
+
+### Subida de imágenes
+
+Es el único endpoint que no recibe JSON: llega un `multipart/form-data` con el
+archivo en el campo `archivo` y el resto como campos de texto (`color`,
+`alt_text`, `orden`).
+
+```bash
+curl -X POST http://localhost:3000/api/productos/1/imagenes   -H "Authorization: Bearer $TOKEN"   -F "archivo=@foto.jpg" -F "color=Negro" -F "orden=0"
+```
+
+Devuelve `201` con la URL relativa (`/uploads/p1-a91f….jpg`), que es la que hay
+que usar en el `<img>`. El archivo queda en el volumen `uploads_data`.
+
+Reglas que aplica: `.jpg`/`.jpeg`/`.png` únicamente, el contenido tiene que ser
+realmente una imagen de esa extensión, máximo `MAX_IMAGEN_MB` (5 por defecto),
+hasta 8 imágenes por producto y una sola principal (`orden = 0`) por color.
+
+> Si subís `MAX_IMAGEN_MB`, subí también `client_max_body_size` en
+> `frontend/nginx.conf`: tiene que quedar por encima, o nginx corta la subida
+> con un `413` crudo antes de que el backend pueda explicar el error.
 
 ## Levantar desde el registry (sin construir)
 
 ```bash
 cp .env.example .env
+docker compose down                                   # los puertos son los mismos
 docker compose -f docker-compose.registry.yml up -d
 ```
 
 Descarga las imágenes publicadas en ghcr.io en vez de construirlas.
+
+Es un **proyecto de Compose aparte** (`tienda-indumentaria-registry`), con sus
+propios volúmenes: arranca con la base vacía, sin los datos del stack de build.
+Para sembrarla: `docker compose -f docker-compose.registry.yml exec backend /bin/seed`.
 
 ## Desarrollo local (sin contenedores)
 
@@ -104,6 +131,36 @@ cd frontend && npm run test
 Los tests del backend no necesitan base de datos: los services solo conocen
 interfaces, así que corren contra un repositorio fake en memoria.
 
+### Prueba de humo contra el sistema levantado
+
+`smoke-test.sh` recorre la API entera con `curl` — registro, login, checkout,
+cancelación y el ABM del admin — verificando el código HTTP de cada paso y el
+efecto sobre el stock. Prueba lo que los tests unitarios no pueden: que el
+ruteo, el JWT, GORM y MySQL funcionan **juntos**.
+
+```bash
+docker compose up -d
+MSYS_NO_PATHCONV=1 docker compose exec backend /bin/seed   # sin esto no hay catálogo
+./smoke-test.sh
+```
+
+```
+OK: 36 verificaciones, todas en verde.
+```
+
+Devuelve 0 si pasa todo y 1 si algo falla, así que sirve tal cual como gate de
+un pipeline. Es repetible: no consume stock del seed y usa un email distinto en
+cada corrida.
+
+Para probar el camino real del navegador —el que pasa por el proxy de nginx en
+vez de pegarle a la API directo— apuntalo al 3000:
+
+```bash
+BASE=http://localhost:3000 ./smoke-test.sh
+```
+
+Solo necesita `curl`, `sed` y `grep`; no usa `jq`.
+
 ## Estructura
 
 ```
@@ -125,6 +182,7 @@ frontend/
     utils.js          lógica pura testeable
     pages/            vistas
   nginx.conf          proxy /api y /uploads hacia el backend
+smoke-test.sh         prueba de humo de la API con curl
 ```
 
 La app vive en `app/`; los documentos del trabajo práctico están **un nivel más

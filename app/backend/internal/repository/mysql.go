@@ -70,13 +70,18 @@ type ProductoRepo struct{ db *gorm.DB }
 
 func NuevoProductoRepo(db *gorm.DB) *ProductoRepo { return &ProductoRepo{db: db} }
 
-func (r *ProductoRepo) Listar(categoria string) ([]dao.Producto, error) {
-	q := r.db.Preload("Variantes").Preload("Imagenes").Where("activo = ?", true)
+// Listar filtra por activo solo si se lo piden: el catalogo publico manda true,
+// el panel de admin false para poder ver (y reactivar) los dados de baja.
+func (r *ProductoRepo) Listar(categoria string, soloActivos bool) ([]dao.Producto, error) {
+	q := r.db.Preload("Variantes").Preload("Imagenes")
+	if soloActivos {
+		q = q.Where("activo = ?", true)
+	}
 	if categoria != "" {
 		q = q.Where("categoria = ?", categoria)
 	}
 	var ps []dao.Producto
-	return ps, q.Find(&ps).Error
+	return ps, q.Order("id").Find(&ps).Error
 }
 
 func (r *ProductoRepo) BuscarPorID(id uint) (*dao.Producto, error) {
@@ -119,3 +124,9 @@ func (r *UsuarioRepo) BuscarPorEmail(email string) (*dao.Usuario, error) {
 }
 
 func (r *UsuarioRepo) Crear(u *dao.Usuario) error { return r.db.Create(u).Error }
+
+type ImagenRepo struct{ db *gorm.DB }
+
+func NuevoImagenRepo(db *gorm.DB) *ImagenRepo { return &ImagenRepo{db: db} }
+
+func (r *ImagenRepo) Crear(i *dao.Imagen) error { return r.db.Create(i).Error }
