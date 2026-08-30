@@ -445,3 +445,144 @@ rechazo; qué hace el `Omit` de GORM y por qué; por qué el seed es un binario 
 pasa por el service; por qué al checkout se manda el id de la variante y no el precio; por
 qué el `es_admin` del front no es un control de acceso; por qué la regla 9 devuelve 409 y
 no 404; y por qué el nombre del proyecto de Compose determina qué volúmenes se usan.
+
+---
+
+# Decisiones — TP3
+
+> En este práctico no hay `evidencias.md`: el proyecto es público
+> (https://github.com/users/KindGuyJ/projects/1) y quien corrige ve en vivo la jerarquía,
+> el sprint, el límite de trabajo en progreso y el issue cerrado por el pull request.
+> Sacar capturas de lo mismo sería duplicar lo que ya se ve.
+
+## 1. La duración del sprint: 14 días
+
+Sprint 1 arranca el 30/08/2026 y cierra el 13/09/2026.
+
+**Por qué dos semanas y no una.** La unidad de trabajo real de esta materia es el trabajo
+práctico, y los prácticos no se entregan semanalmente. Un sprint de una semana me obligaría
+a cerrar y replanificar en la mitad de un TP, con una ceremonia que no cambia ninguna
+decisión: el trabajo pendiente es el mismo antes y después. Dos semanas es la ventana más
+corta que contiene un arco de trabajo completo — en este caso la historia de CI, que empieza
+en el TP3 y termina en el TP4.
+
+**Por qué no un mes.** Un sprint largo esconde el atraso: si algo se traba, me entero recién
+al final, cuando ya no queda margen. La gracia de la iteración corta es que el error se
+descubre temprano y barato.
+
+**Sobre la fecha de entrega (02/09/2026).** No hay ninguna duración de sprint que haga que
+la entrega caiga justo en un cierre: entrego en el día 4 de 14. Y está bien que así sea —
+un sprint no es un plazo de entrega, es una cadencia de planificación. La consecuencia
+práctica es visible en el tablero: la historia y una de sus dos tareas se entregan
+**abiertas**, porque el trabajo sigue en el TP4. Sería peor forzar un sprint de tres días
+para que "cierre justo": tendría un cierre prolijo y ninguna utilidad.
+
+## 2. El límite de trabajo en progreso: 2
+
+**Por qué 2.** La regla de arranque es *cantidad de personas + 1*. Trabajando sola, eso da
+dos. El «más uno» es la válvula para cuando algo queda esperando por afuera —una revisión,
+una corrida de CI que tarda, una respuesta— y necesito avanzar en otra cosa sin dejar el día
+muerto.
+
+**Qué me haría subirlo.** Que el segundo espacio se llene de forma sistemática con trabajo
+genuinamente bloqueado y no por elección mía. O sumar una persona al equipo: ahí el número
+pasa a tres por la misma regla.
+
+**Qué señal me diría que quedó demasiado alto.** Que nunca lo alcance. Un límite que no se
+toca nunca no está limitando nada: es decoración. La señal contraria —chocarlo seguido— no
+es mala, es el sistema funcionando: me está diciendo que termine algo antes de empezar otra
+cosa.
+
+**Qué pasa si lo subo a diez.** Deja de ser un límite. Trabajando sola nunca voy a tener diez
+cosas en curso, así que la columna jamás se pondría en rojo y el mecanismo quedaría
+desactivado sin que se note. Es la peor forma de romperlo: no falla, simplemente no hace
+nada. Y el costo de no tenerlo es concreto — con muchas tareas empezadas y ninguna terminada,
+el trabajo en progreso no entrega valor, solo acumula contexto que hay que recordar.
+
+## 3. Diagnóstico de la historia mal escrita
+
+La historia del ejercicio era:
+
+> *Como desarrollador quiero crear la tabla usuarios para guardar los datos.*
+
+**Por qué está mal escrita.** Es una **tarea disfrazada de historia**. Tiene la forma
+—*Como… quiero… para…*— pero no la sustancia: el beneficiario es el desarrollador, no
+alguien que recibe valor del producto; lo que pide es un paso técnico de implementación; y
+el «para» no nombra ningún beneficio, apenas repite el mismo acto técnico con otras palabras
+("crear la tabla… para guardar los datos"). Como consecuencia, no hay nada que un tercero
+pueda verificar: no se puede escribir un criterio de aceptación sobre "la tabla existe" que
+diga algo sobre el producto.
+
+**Cómo la reescribiría**, sobre mi app:
+
+> *Como clienta quiero registrarme con mi email y una contraseña para poder ver el historial
+> de mis pedidos.*
+>
+> Criterios: el registro rechaza un email ya usado · el registro rechaza un email con formato
+> inválido antes de enviar · después de registrarme quedo con sesión iniciada · desde mi
+> cuenta veo únicamente mis pedidos.
+
+Crear la tabla `usuarios` sigue existiendo, pero en el lugar que le corresponde: como
+**tarea** colgando de esa historia. Ésa es la prueba de que el original era una tarea — al
+reescribirlo bien, el enunciado viejo reaparece un nivel más abajo.
+
+## 4. Problemas encontrados y cómo los resolví
+
+**El scope `project` no viene con `gh auth login`.** La autenticación normal deja `repo`,
+`workflow` y `gist`, pero cualquier comando `gh project` falla por permisos. Se agrega
+aparte con `gh auth refresh -s project`.
+
+**Escribir «Parte de #8» en el cuerpo de un issue NO crea jerarquía.** Éste es el problema
+que más me habría costado si no lo verificaba: los cinco issues estaban creados, con sus
+labels correctas, y el cuerpo de cada tarea decía "Parte de #8". Todo *parecía* bien. Pero
+eso genera solamente una **mención** — un link en el historial del issue — y no la relación
+padre-hijo. Consultando la API quedó a la vista: la épica devolvía `subIssues: ninguna`. Se
+resuelve enlazando explícitamente con `gh issue edit 7 --add-sub-issue 8` (necesita `gh`
+2.94 o superior). Es la misma trampa que las task-lists (`- [ ] #12`), que el enunciado
+rechaza por lo mismo: se ven parecido y no son navegables.
+
+**Crear el proyecto con `gh project create` deja el tablero vacío.** El comando no elige
+ningún repositorio, así que no queda configurada la automatización *Auto-add to project* que
+sí arma la creación desde la web. Los items se agregan con `gh project item-add`.
+
+**Los Projects de usuario nacen privados, y el entregable es la URL.** Entregada así, quien
+la abre recibe un 404 — ni siquiera un "no tenés permiso". Se corrige con
+`gh project edit 1 --owner "@me" --visibility PUBLIC`, y se comprueba abriendo la propia URL
+en una ventana de incógnito.
+
+**Crear el campo Sprint no asigna a nadie al sprint.** El campo de tipo Iteration se
+configura una vez y genera las iteraciones hacia adelante, pero los items quedan en blanco:
+la historia y las dos tareas seguían sin sprint. Hay que asignarlas explícitamente, una por
+una.
+
+## 5. Declaración de uso de IA
+
+Usé **Claude Code** para armar la secuencia de comandos `gh` de este práctico, para redactar
+el cuerpo del bug sobre mi propia app, y para ordenar este documento.
+
+**Las decisiones que se evalúan las tomé yo:** la duración del sprint, el número del límite
+de trabajo en progreso y el diagnóstico de la historia mal escrita. La épica, la historia,
+sus criterios y sus dos tareas están dictadas por el enunciado y se reprodujeron tal cual.
+
+**Cómo lo verifiqué — y por qué importa acá en particular.** No alcanzaba con que los
+comandos no dieran error: los cinco issues se habían creado bien y el resultado *parecía*
+correcto, pero la jerarquía no existía. La verificación fue consultar la API de GitHub y
+comparar contra lo que pide el enunciado, punto por punto:
+
+- que la épica tenga a la historia como sub-issue, y la historia a sus dos tareas;
+- que el bug **no** tenga padre;
+- que la historia tenga sus cuatro criterios y la épica ninguno;
+- que el proyecto sea público y tenga los cinco items;
+- que el campo Sprint sea de tipo Iteration y que la historia y sus tareas estén en Sprint 1;
+- que la protección de `main` siga exigiendo pull request.
+
+Ese control encontró dos cosas que faltaban —la jerarquía sin enlazar y el sprint sin
+asignar— y las dos están descritas arriba. El límite de trabajo en progreso y la
+automatización *Item closed → Done* no se pueden consultar por API: ésos los verifiqué a
+mano en el tablero.
+
+**Qué tengo que poder explicar en la defensa:** por qué elegí catorce días y qué pasaría con
+uno de tres; por qué el límite es dos y qué me haría cambiarlo; por qué cada criterio de
+aceptación de mi historia es verificable y "que el CI funcione bien" no lo sería; por qué el
+bug va al costado y no colgando de la historia; y por qué un `Closes #N` tiene que apuntar al
+número de la tarea y no al de la historia.
