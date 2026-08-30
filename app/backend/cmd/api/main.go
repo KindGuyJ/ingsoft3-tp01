@@ -122,3 +122,6 @@ func main() {
 		log.Fatalf("el servidor se cayo: %v", err)
 	}
 }
+
+// rotura a propósito para demostrar el gate del TP4
+var _ = paqueteQueNoExiste.Nada
