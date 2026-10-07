@@ -350,3 +350,30 @@ func TestCheckout_VarianteRepetidaSeDescuentaPorElTotal(t *testing.T) {
 		t.Errorf("items = %+v, se esperaba una sola linea con cantidad 4", pedido.Items)
 	}
 }
+
+// El camino que ningun test recorria (TP5, ejercicio del camino sin cubrir):
+// `ic.Cantidad <= 0` siempre daba false. Sin este rechazo, una cantidad
+// negativa SUMARIA stock: 5 - (-3) = 8.
+func TestCheckout_CantidadNoPositiva(t *testing.T) {
+	casos := []struct {
+		nombre   string
+		cantidad int
+	}{
+		{"cero", 0},
+		{"negativa", -3},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			s, vr, pr := setup() // stock 5
+
+			_, err := s.Checkout(7, []ItemCarrito{{VarianteID: 1, Cantidad: c.cantidad}})
+
+			if k := kindDe(t, err); k != dom.KindValidacion {
+				t.Errorf("kind = %v, se esperaba KindValidacion", k)
+			}
+			if vr.data[1].Stock != 5 || len(pr.creados) != 0 {
+				t.Errorf("no se tiene que tocar nada: stock %d, pedidos %d", vr.data[1].Stock, len(pr.creados))
+			}
+		})
+	}
+}
