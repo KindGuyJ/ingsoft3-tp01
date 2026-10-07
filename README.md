@@ -132,12 +132,22 @@ cd app/frontend && npm install && npm run dev
 ## Tests
 
 ```bash
-cd app/backend && go test ./internal/services/... -v
+cd app/backend && go test ./...
 cd app/frontend && npm run test
 ```
 
 Los tests del backend no necesitan base de datos: los services solo conocen
 interfaces, así que corren contra un repositorio fake en memoria.
+
+**Con cobertura y umbral**, igual que en el pipeline: la etapa `test` de cada
+Dockerfile corre la suite y sale con error si la cobertura no llega al umbral.
+
+```bash
+cd app/backend  && docker build --target test -t backend-test . && docker run --rm backend-test
+cd app/frontend && docker build --target test -t frontend-test . && docker run --rm frontend-test
+```
+
+Los umbrales y qué entra en la cuenta están en [`decisiones.md`](decisiones.md) (TP5).
 
 ### Prueba de humo contra el sistema levantado
 

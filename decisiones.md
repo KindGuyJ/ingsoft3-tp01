@@ -772,3 +772,248 @@ funcionando sin cache y qué significaría que fallara; por qué construyo con e
 vez de compilar en el workflow; qué significa `strict: true`; y qué conceptos de este workflow
 sobrevivirían si mañana migrara a Azure Pipelines (los triggers, los jobs, los steps y el
 gate — cambia el YAML y el nombre de cada cosa, no la estructura).
+
+# Decisiones — TP5
+
+> En este práctico tampoco hay `evidencias.md`: el repositorio es público. Cada decisión
+> lleva al lado el link a la corrida o al Pull Request que la prueba.
+
+## 1. Qué testeé y por qué eso
+
+En esta app un bug duele en tres lugares: **vender lo que no hay**, **cobrar mal** y
+**dejar entrar al panel de admin a quien no lo es**. La suite se concentra ahí:
+
+- **Backend** (`app/backend/internal/services/`): las reglas de negocio del checkout
+  (stock, descuento, total y envío, snapshot de precio, transiciones de estado,
+  cancelación, que cada usuario vea solo sus pedidos, productos dados de baja), las
+  validaciones de usuarios y productos, y las cuotas (regla 10). Y el **middleware JWT**
+  (`internal/middleware/auth_test.go`): token vencido, firmado con otro secreto, sin
+  firma (`alg=none`), y el rol admin.
+- **Frontend**: `utils.js` (total, envío gratis, habilitación del botón, talles sin
+  stock) y `services/compra.js` (qué se le manda al backend al confirmar).
+
+Las tres técnicas, de los dos lados:
+
+| | Backend (Go) | Frontend (vitest) |
+|---|---|---|
+| Parametrizado | table-driven con `t.Run` (`TestCheckout_TotalYEnvio`, `TestRequiereAuth_Rechazos`) | `it.each` (`emailValido`, `sePuedeCancelar`) |
+| Caso de error | stock insuficiente, carrito vacío, cantidad no positiva, token inválido | carrito vacío rechazado, rechazo del backend con su status |
+| Mock | `pedidos_mock_test.go` | `compra.test.js` con `vi.fn()` |
+
+## 2. Los mocks, y el refactor que hizo falta en el front
+
+**Backend.** Los fakes en memoria que ya tenía son *stubs* con estado: el test mira cómo
+quedó el stock después del checkout. Agregué **mocks escritos a mano** (un struct que
+implementa la interfaz del repositorio y anota cada llamada) y el assert compara la lista
+de llamadas: primero `Crear`, después un `ActualizarStock` por variante con el stock final.
+El segundo test hace fallar `Crear` y verifica que no se toca el stock. No usé una
+librería (gomock, testify): en Go alcanza con el struct, y no agrega nada que explicar.
+
+No hizo falta refactor: los repositorios ya entraban al service por interfaz, declarada en
+el paquete que la usa.
+
+Que el mock verifica algo que los stubs no, lo comprobé con un mutante: moví el descuento
+de stock **antes** de `Crear`. Se pusieron en rojo los dos tests nuevos y **ninguno de los
+anteriores**.
+
+**Frontend.** La lógica de confirmar la compra vivía adentro de `Carrito.jsx` y llamaba a
+`api.checkout` directo: para testearla había que montar la pantalla y pisar el `fetch`
+global. La saqué a `services/compra.js`, que recibe la función `checkout` por parámetro; la
+pantalla le pasa la real y el test un `vi.fn()`. Ahí el mock verifica que al backend se le
+manda **solo variante y cantidad, nunca el precio** (si el front mandara el precio,
+cualquiera podría comprar a $1), y que un carrito vacío no llama al backend.
+
+PR: <https://github.com/KindGuyJ/ingsoft3-tp01/pull/18>
+
+## 3. Dónde corren los tests: una etapa del Dockerfile
+
+En el TP2 decidí que los tests no corrieran dentro del Dockerfile, porque un `RUN go test`
+en la cadena de la imagen final hace que un test roto impida construirla. Eso sigue en pie.
+Lo que agregué es una **etapa `test` aparte** (`FROM build AS test`) que la imagen `final`
+no usa:
+
+- Construirla no corre nada: es `ENTRYPOINT`, no `RUN`. Los tests se ejecutan cuando el
+  pipeline la arranca con `docker run`, y el código de salida del contenedor es el freno.
+- Parte de `build`, así que testea **el mismo código y las mismas dependencias** que se
+  compilan. Es **una sola receta**: no hay un segundo Go o Node, el del runner, con otra
+  versión.
+- Para que los tests entren a la imagen tuve que sacar `*_test.go` del `.dockerignore` del
+  backend. La imagen final no se los lleva: copia solo los binarios.
+
+## 4. Cómo se mide, en mi stack
+
+Go no es el stack de los ejemplos, así que cada pieza la resolví distinto:
+
+| Lo que se pide | Backend (Go) | Frontend |
+|---|---|---|
+| Medir cobertura | `go test -coverpkg=./... -coverprofile` | `vitest --coverage` (v8) |
+| Umbral que rompe el build | `app/backend/cobertura.sh`: lee el total de `go tool cover -func` y sale con 1 si no llega | `coverage.thresholds` en `vite.config.js` |
+| Qué entra en la cuenta | `grep -v` de los paquetes excluidos sobre el perfil | `include` / `exclude` |
+| Ramas | **gobco** `-branch` | v8 |
+| Reporte | HTML de `go tool cover` + resumen en la corrida | HTML de v8 + tabla en la corrida |
+
+**Go no mide ramas.** `go tool cover` cuenta sentencias. Las ramas las mide `gobco`, que
+instrumenta cada `if` y lista las condiciones que ningún test recorrió en los dos sentidos.
+Tiene un límite: solo ve los tests del propio paquete. Por eso lo uso para **informar**, no
+para frenar.
+
+`-coverpkg=./...` hace que un test de `services` también cuente lo que ejecuta en otro
+paquete: así `errors/` queda cubierto sin tener tests propios.
+
+## 5. Qué dejé afuera de la cuenta
+
+| Lado | Afuera | Por qué |
+|---|---|---|
+| Back | `cmd/`, `config/` | el arranque: cablear la app y leer variables de entorno |
+| Back | `dao/`, `dto/` | structs de datos, sin comportamiento |
+| Back | `controllers/`, `repository/` | adaptadores HTTP y GORM: sin la base real no prueban nada; los cubre la integración del TP7 |
+| Front | `main.jsx`, `App.jsx` | el arranque: montar React y declarar las rutas |
+
+Es una lista de **exclusión** y no de inclusión, a propósito: un paquete o archivo nuevo
+entra solo a la cuenta, y si no tiene tests baja el número. Con inclusión, todo lo que me
+olvidara de nombrar quedaría afuera sin que nadie se enterara.
+
+El middleware JWT **sí** cuenta: es lógica (decide quién entra), así que le escribí tests
+en vez de excluirlo. Las pantallas del front que no tienen tests (`Login`, `Register`,
+`Catalogo`, `MisPedidos`) también cuentan y bajan el número: excluirlas sería esconder lo
+que no testeé.
+
+## 6. Los umbrales
+
+| | Métrica | Umbral | Medido hoy | Ramas hoy |
+|---|---|---|---|---|
+| Backend | sentencias | **80%** | 85.4% | 76.4% (139/182, gobco) |
+| Frontend | líneas **y** ramas | **50% / 75%** | 56.3% | 81.6% |
+
+**Por qué esos números.** Están anclados en lo que medí cuando los fijé (83.3% en el
+backend; 56.3% y 81.6% en el front), con unos puntos de margen. Quiero que el umbral me
+frene si el número baja, no que sea inalcanzable ni que cualquier refactor chico lo rompa.
+
+**Por qué sentencias en el backend.** Es lo que Go mide de forma nativa. Las ramas las
+reporto igual, en cada corrida.
+
+**Por qué las dos métricas en el front.** v8 (vitest 2.1.9) cuenta **0 ramas, no 0%**, en un
+archivo que ningún test carga. Por eso las ramas dan alto aunque haya pantallas sin tests,
+y el umbral que detecta un archivo nuevo sin tests es el de **líneas**. Con umbral solo en
+ramas, el freno no vería ese archivo.
+
+**Qué haría falta para subirlos.** En el front, tests de las cuatro pantallas que no tienen.
+En el backend, recorrer las ramas `err != nil` de los repositorios, que gobco marca como
+nunca recorridas: hacen falta repos que fallen a pedido, como el mock de `Crear`.
+
+Corrida en verde, con los dos resúmenes y los reportes `cobertura-backend` y
+`cobertura-frontend` descargables:
+<https://github.com/KindGuyJ/ingsoft3-tp01/actions/runs/37680908080>
+
+## 7. El umbral frenando un merge
+
+Los checks requeridos de `main` son los mismos del TP4, `build-backend` y `build-frontend`,
+con `strict: true`. La cobertura corre **adentro de esos jobs**, así que no hubo que
+configurar ningún freno nuevo: alcanzó con que el número pudiera poner el job en rojo.
+
+**PR #19, la secuencia completa (mergeado):** <https://github.com/KindGuyJ/ingsoft3-tp01/pull/19>
+
+1. Agregué la regla 10, `cuotas.go`, **sin tests**. Compila y todos los tests pasan.
+2. `build-backend` en rojo, en la métrica de **sentencias**:
+   `ERROR: la cobertura de sentencias (77.5%) no llega al umbral (80%)`.
+   Corrida: <https://github.com/KindGuyJ/ingsoft3-tp01/actions/runs/37678345712>
+   `build-frontend` siguió en verde: con uno solo en rojo, el merge ya queda bloqueado.
+3. Agregué `cuotas_test.go`, un test por cada camino que declara `cuotas.go` (planes
+   válidos, rechazos, la cuota justo en el mínimo, una sola cuota sin mínimo, los planes
+   ofrecidos). Subió a 84.5%, verde, merge.
+
+Antes de abrirlo hice la cuenta: lo medido eran 294 sentencias con 245 cubiertas; con 13
+nuevas sin tests ya baja de 80 (245/307 = 79.8%).
+
+**PR #20, el freno vigente (abierto hasta la defensa):** <https://github.com/KindGuyJ/ingsoft3-tp01/pull/20>
+La regla 11, una guarda de cambio de precio (`precios.go`), sin tests:
+`ERROR: la cobertura de sentencias (77.6%) no llega al umbral (80%)`.
+Corrida: <https://github.com/KindGuyJ/ingsoft3-tp01/actions/runs/37679665587>.
+La primera versión, con una sola función, dio 80.2%: no alcanzaba para bajar del umbral.
+Le sumé `AplicarAumento` (aumento masivo redondeado a la centena).
+
+**Por qué este freno es distinto del del TP4.** El del TP4 frenaba lo que no compilaba: la
+máquina diciendo "esto no anda". Este frena código que anda, compila y pasa todos sus
+tests, por un criterio que elegí yo. Lo que **no** ataja: código con tests que ejecutan sin
+verificar, y bugs en código ya cubierto. La sección 9 tiene un ejemplo de los dos.
+
+## 8. El camino sin cubrir
+
+**La línea.** `app/backend/internal/services/pedidos.go`, en el checkout:
+`if ic.Cantidad <= 0`. gobco lo reportó como
+*condition "ic.Cantidad <= 0" was 14 times false but never true*: ningún test pedía una
+cantidad cero o negativa. La cobertura de sentencias no lo mostraba como problema, porque
+la línea del `if` se ejecutaba en cada test.
+
+**La entrada que lo recorre.** `{VarianteID: 1, Cantidad: -3}`. Si ese `if` desapareciera,
+el stock quedaría en `5 - (-3) = 8`: comprar **sumaría** stock.
+
+**Qué decidí.** Agregar el test, parametrizado con `0` y `-3`
+(`TestCheckout_CantidadNoPositiva`), que además verifica que no se crea el pedido ni se toca
+el stock. Entró en el PR #21.
+
+## 9. Por qué cobertura alta no garantiza calidad: un bug real
+
+Mientras armaba la demo encontré un bug en el checkout, en líneas que ya tenían cobertura.
+Si el carrito traía **la misma variante en dos líneas**, el stock se validaba línea por
+línea contra el stock original:
+
+- 3 + 3 unidades con stock 5 pasaban las dos: se vendían 6 (rompe la regla 1).
+- 2 + 2 con stock 5 descontaban solo 2: se vendían 4 y el inventario quedaba en 3.
+
+El front suma las líneas repetidas, así que la app nunca lo disparaba; un `POST /api/pedidos`
+armado a mano, sí. Las líneas del checkout se ejecutaban en decenas de tests y ninguno pedía
+la misma variante dos veces. **La cobertura dice qué se ejecutó, no qué se probó.**
+
+Lo arreglé en el PR #21 con el test primero:
+<https://github.com/KindGuyJ/ingsoft3-tp01/pull/21>
+
+- Commit con los tests solos: rojo por los tests, no por cobertura.
+  <https://github.com/KindGuyJ/ingsoft3-tp01/actions/runs/37680528877>
+- Commit con el fix: `consolidar` junta las líneas de la misma variante antes de validar.
+  Verde: <https://github.com/KindGuyJ/ingsoft3-tp01/actions/runs/37680675131>
+
+El mutante de la sección 2 es el mismo fenómeno: el orden entre `Crear` y el descuento de
+stock estaba 100% ejecutado, y hasta que escribí el mock no lo verificaba ningún test.
+
+## 10. Problemas que encontré y cómo los resolví
+
+**gobco no arrancaba dentro del contenedor.** Fallaba con `error processing cgo for package
+"net"`: la imagen `golang:alpine` no trae gcc. La etapa `test` usa `ENV CGO_ENABLED=0`, igual
+que el build del binario.
+
+**gobco no reporta varios paquetes juntos.** Lo corro una vez por paquete y `cobertura.sh`
+suma los resultados.
+
+**El fin de línea del script.** Mi Git en Windows convierte a CRLF al hacer checkout, y `sh`
+dentro de un contenedor Linux no entiende un script con CRLF. Agregué `.gitattributes` con
+`*.sh text eol=lf`.
+
+**El primer intento del PR #20 no alcanzaba.** La guarda de precio sola dejó la cobertura en
+80.2%, apenas arriba del umbral. Lo resolví haciendo la cuenta con el reporte antes de
+pushear, y agregando código real, no relleno.
+
+**Riesgo abierto: el PR #20 puede ponerse verde solo.** Su corrida roja queda fija, pero si
+se actualiza la rama con un `main` que tenga más tests, el número sube. Contra el `main` de
+hoy daría 78.7%. No lo voy a actualizar hasta la defensa.
+
+## 11. Declaración de uso de IA
+
+Usé un asistente de IA (Claude Code) para escribir los tests con mock y los del middleware,
+`compra.js` con sus tests, `cobertura.sh`, las etapas `test` de los Dockerfiles y los pasos
+del `ci.yml`, y para encontrar y reproducir el bug de la variante repetida.
+
+**Las decisiones las tomé yo:** qué entra en la cuenta de cobertura y qué no, los umbrales
+y sobre qué métrica, que los tests corran en una etapa del Dockerfile y no con el toolchain
+del runner, y qué reglas usar para la demo.
+
+**Cómo lo verifiqué:**
+
+- La suite en verde en mi máquina y dentro de la etapa `test`, con `docker run`.
+- Que el umbral frena de verdad: lo subí a 90 en el backend y a 60 en el frontend, y los
+  dos salieron con código 1 con el mensaje de error.
+- Que el mock verifica algo: el mutante del orden `Crear` / stock (sección 2).
+- El bug: primero el test en rojo, después el fix.
+- Contra la API, no contra la pantalla: que `required_status_checks` siga siendo
+  `build-backend` y `build-frontend` con `strict: true`, y que la corrida de `main` publique
+  los dos artefactos de cobertura.
