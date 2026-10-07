@@ -28,3 +28,8 @@ app/backend/uploads/
 # Node
 app/frontend/node_modules/
 app/frontend/dist/
+
+# Reportes de cobertura (TP5): se generan en cada corrida, no se versionan.
+# En el pipeline viajan como artefacto de la corrida.
+app/frontend/coverage/
+app/backend/cobertura/

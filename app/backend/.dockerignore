@@ -1,4 +1,3 @@
 .git/
-*_test.go
 uploads/
 tmp/
