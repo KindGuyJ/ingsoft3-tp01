@@ -312,3 +312,68 @@ func TestCheckout_UnItemDeBajaRechazaElCarritoEntero(t *testing.T) {
 		t.Error("no se tiene que crear el pedido")
 	}
 }
+
+// --- Regla 1, con la misma variante repetida en el carrito -------------------
+//
+// El carrito llega del cliente y nada impide que traiga la misma variante en dos
+// lineas (el front las suma, pero un POST armado a mano no). El stock se tiene
+// que comparar contra lo pedido EN TOTAL, no linea por linea.
+
+func TestCheckout_VarianteRepetidaSuperaElStockEnTotal(t *testing.T) {
+	s, vr, pr := setup() // stock 5
+
+	_, err := s.Checkout(7, []ItemCarrito{{VarianteID: 1, Cantidad: 3}, {VarianteID: 1, Cantidad: 3}})
+
+	if k := kindDe(t, err); k != dom.KindConflicto {
+		t.Fatalf("kind = %v, se esperaba KindConflicto (se piden 6 de 5)", k)
+	}
+	if vr.data[1].Stock != 5 {
+		t.Errorf("el stock cambio a %d; un checkout rechazado no descuenta", vr.data[1].Stock)
+	}
+	if len(pr.creados) != 0 {
+		t.Error("no se tiene que crear el pedido")
+	}
+}
+
+func TestCheckout_VarianteRepetidaSeDescuentaPorElTotal(t *testing.T) {
+	s, vr, _ := setup() // stock 5
+
+	pedido, err := s.Checkout(7, []ItemCarrito{{VarianteID: 1, Cantidad: 2}, {VarianteID: 1, Cantidad: 2}})
+
+	if err != nil {
+		t.Fatalf("checkout fallo: %v", err)
+	}
+	if got := vr.data[1].Stock; got != 1 {
+		t.Errorf("stock = %d, se esperaba 1 (5 - 2 - 2)", got)
+	}
+	if len(pedido.Items) != 1 || pedido.Items[0].Cantidad != 4 {
+		t.Errorf("items = %+v, se esperaba una sola linea con cantidad 4", pedido.Items)
+	}
+}
+
+// El camino que ningun test recorria (TP5, ejercicio del camino sin cubrir):
+// `ic.Cantidad <= 0` siempre daba false. Sin este rechazo, una cantidad
+// negativa SUMARIA stock: 5 - (-3) = 8.
+func TestCheckout_CantidadNoPositiva(t *testing.T) {
+	casos := []struct {
+		nombre   string
+		cantidad int
+	}{
+		{"cero", 0},
+		{"negativa", -3},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			s, vr, pr := setup() // stock 5
+
+			_, err := s.Checkout(7, []ItemCarrito{{VarianteID: 1, Cantidad: c.cantidad}})
+
+			if k := kindDe(t, err); k != dom.KindValidacion {
+				t.Errorf("kind = %v, se esperaba KindValidacion", k)
+			}
+			if vr.data[1].Stock != 5 || len(pr.creados) != 0 {
+				t.Errorf("no se tiene que tocar nada: stock %d, pedidos %d", vr.data[1].Stock, len(pr.creados))
+			}
+		})
+	}
+}
