@@ -13,7 +13,19 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /api ./cmd/api
 # operacion manual de un solo uso (docker compose exec backend /bin/seed).
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /seed ./cmd/seed
 
-# ---- Etapa 2: runtime (imagen minima, sin toolchain) ----
+# ---- Etapa 2: tests (parte del build: mismo codigo y mismas dependencias) ----
+# La imagen final NO depende de esta etapa: un test roto no impide construirla.
+# Los tests corren cuando el pipeline la ejecuta (docker run), no al construirla:
+# por eso es ENTRYPOINT y no RUN.
+FROM build AS test
+# Sin cgo, igual que el build: alpine no trae gcc, y gobco lo necesitaria para
+# analizar el paquete net (falla con "error processing cgo for package net").
+ENV CGO_ENABLED=0
+# gobco mide cobertura de ramas, que Go no trae. Version fija: el build es reproducible.
+RUN go install github.com/rillig/gobco@v1.3.4
+ENTRYPOINT ["sh", "./cobertura.sh"]
+
+# ---- Etapa 3: runtime (imagen minima, sin toolchain) ----
 FROM alpine:3.20 AS final
 RUN adduser -D -u 10001 app
 WORKDIR /app

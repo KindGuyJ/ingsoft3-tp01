@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
+import { confirmarCompra } from '../services/compra'
 import { useCarrito } from '../hooks/useCarrito'
 import { useAuth } from '../hooks/useAuth'
 import { AvisoError, AvisoExito } from '../components/Aviso'
@@ -32,12 +33,7 @@ export default function Carrito() {
 
     setEnviando(true)
     try {
-      // Se manda solo variante_id y cantidad: el precio lo pone el backend.
-      // Si el front mandara el precio, cualquiera podría comprar a $1.
-      const creado = await api.checkout(items.map((i) => ({
-        variante_id: i.variante_id,
-        cantidad: i.cantidad,
-      })))
+      const creado = await confirmarCompra(items, api.checkout)
       setPedido(creado)
       vaciar()
     } catch (e) {

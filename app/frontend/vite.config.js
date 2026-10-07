@@ -16,5 +16,20 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    coverage: {
+      provider: 'v8',
+      // json-summary deja coverage-summary.json: lo lee el pipeline para el Summary.
+      reporter: ['text', 'html', 'json-summary'],
+      // Entra TODO src/ (también lo que ningún test importa: un archivo nuevo sin
+      // tests baja el número), menos el arranque. Ver decisiones.md (TP5).
+      include: ['src/**/*.{js,jsx}'],
+      exclude: [
+        'src/main.jsx', // monta React en el DOM
+        'src/App.jsx',  // solo declara las rutas
+        'src/**/*.test.{js,jsx}',
+      ],
+      // El umbral: medido 56 de líneas y 81 de ramas. Ver decisiones.md (TP5).
+      thresholds: { lines: 50, branches: 75 },
+    },
   },
 })

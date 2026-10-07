@@ -27,6 +27,51 @@ jobs:
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
 
+      # ---- TP5: tests + cobertura, con la MISMA receta que la imagen ----
+      - name: Construir la etapa de tests del backend
+        uses: docker/build-push-action@v7
+        with:
+          context: ./app/backend
+          target: test          # se detiene en la etapa de tests, no llega a final
+          load: true            # la deja en el Docker local, para poder correrla
+          push: false
+          tags: backend-test:ci
+          cache-from: type=gha,scope=backend-test
+          cache-to: type=gha,mode=max,scope=backend-test
+
+      # El ENTRYPOINT de la etapa es cobertura.sh: corre los tests y sale con
+      # error si la cobertura no llega al umbral. Ese codigo de salida es el freno.
+      - name: Correr los tests con cobertura (umbral)
+        run: docker run --rm -v "${{ github.workspace }}/backend-cobertura:/out" backend-test:ci
+
+      - name: Resumen de cobertura del backend
+        if: ${{ !cancelled() }}   # tambien cuando el umbral fallo: es la corrida que se mira
+        run: |
+          test -f backend-cobertura/resumen.txt   # si no esta, el paso falla: mejor rojo que vacio
+          {
+            echo "### Cobertura del backend"
+            echo '```'
+            cat backend-cobertura/resumen.txt
+            echo '```'
+            echo "<details><summary>Por funcion</summary>"
+            echo
+            echo '```'
+            sed 's#github.com/KindGuyJ/ingsoft3-tp01/app/backend/##' backend-cobertura/cobertura.txt
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publicar el reporte de cobertura del backend
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: cobertura-backend
+          path: |
+            backend-cobertura/cobertura.html
+            backend-cobertura/cobertura.txt
+            backend-cobertura/ramas.txt
+            backend-cobertura/resumen.txt
+
   build-frontend:
     runs-on: ubuntu-latest
     steps:
@@ -46,3 +91,44 @@ jobs:
           tags: frontend:ci
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
+
+      # ---- TP5: tests + cobertura, con la MISMA receta que la imagen ----
+      - name: Construir la etapa de tests del frontend
+        uses: docker/build-push-action@v7
+        with:
+          context: ./app/frontend
+          target: test
+          load: true
+          push: false
+          tags: frontend-test:ci
+          cache-from: type=gha,scope=frontend-test
+          cache-to: type=gha,mode=max,scope=frontend-test
+
+      # npm run test:ci = vitest con --coverage: los thresholds de vite.config.js
+      # hacen que salga con error si no se llega. Ese codigo de salida es el freno.
+      - name: Correr los tests con cobertura (umbral)
+        run: |
+          docker run --rm -e COVERAGE_DIR=/salida/reporte \
+            -v "${{ github.workspace }}/frontend-cobertura:/salida" frontend-test:ci
+
+      - name: Resumen de cobertura del frontend
+        if: ${{ !cancelled() }}
+        run: |
+          F=frontend-cobertura/reporte/coverage-summary.json
+          test -f "$F"
+          node -e "
+            const t = require('./$F').total;
+            if (!t.lines.total) { console.error('midio 0 archivos: revisar el include'); process.exit(1); }
+            console.log('### Cobertura del frontend');
+            console.log('| metrica | cubierto | % |');
+            console.log('|---|---|---|');
+            for (const m of ['lines', 'branches', 'functions', 'statements'])
+              console.log('| ' + m + ' | ' + t[m].covered + '/' + t[m].total + ' | ' + t[m].pct + '% |');
+          " >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publicar el reporte de cobertura del frontend
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: cobertura-frontend
+          path: frontend-cobertura/reporte

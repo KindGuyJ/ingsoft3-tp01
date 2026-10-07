@@ -1,0 +1,3 @@
+# Los scripts corren adentro de contenedores Linux: con CRLF, sh no los
+# entiende. Sin esta linea, core.autocrlf de Windows los convierte al hacer checkout.
+*.sh text eol=lf
