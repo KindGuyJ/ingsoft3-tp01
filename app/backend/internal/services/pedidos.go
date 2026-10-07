@@ -65,7 +65,8 @@ var transicionesValidas = map[string][]string{
 // Reglas que aplica, en orden:
 //  1. El carrito no puede estar vacio, ni tener cantidades <= 0.
 //  2. Cada variante tiene que existir.
-//  3. No se puede pedir mas cantidad que el stock disponible (regla 1).
+//  3. No se puede pedir mas cantidad que el stock disponible (regla 1),
+//     contando TODAS las lineas de la misma variante: ver consolidar.
 //  4. El producto tiene que estar activo: uno dado de baja no se vende mas
 //     (regla 9). Se valida aca, y no solo escondiendolo del catalogo, porque
 //     esconderlo no impide un POST /api/pedidos con el id de la variante.
@@ -75,6 +76,10 @@ var transicionesValidas = map[string][]string{
 func (s *PedidosService) Checkout(usuarioID uint, carrito []ItemCarrito) (*dao.Pedido, error) {
 	if len(carrito) == 0 {
 		return nil, dom.Validacion("el carrito esta vacio")
+	}
+	carrito, err := consolidar(carrito)
+	if err != nil {
+		return nil, err
 	}
 
 	items := make([]dao.PedidoItem, 0, len(carrito))
@@ -89,10 +94,6 @@ func (s *PedidosService) Checkout(usuarioID uint, carrito []ItemCarrito) (*dao.P
 	descuentos := make([]descuento, 0, len(carrito))
 
 	for _, ic := range carrito {
-		if ic.Cantidad <= 0 {
-			return nil, dom.Validacion("la cantidad debe ser mayor a cero")
-		}
-
 		v, err := s.variantes.BuscarPorID(ic.VarianteID)
 		if err != nil {
 			return nil, dom.Interno("no se pudo leer la variante", err)
@@ -151,6 +152,31 @@ func (s *PedidosService) Checkout(usuarioID uint, carrito []ItemCarrito) (*dao.P
 	}
 
 	return pedido, nil
+}
+
+// consolidar junta las lineas del carrito que piden la misma variante, sumando
+// sus cantidades, y respeta el orden en que aparecio cada una.
+//
+// Sin esto el stock se validaba linea por linea contra el stock ORIGINAL: con
+// stock 5, dos lineas de 3 pasaban las dos (se vendian 6), y dos de 2
+// descontaban solo 2 (el segundo descuento pisaba al primero). El front ya
+// suma las lineas repetidas, pero el carrito llega del cliente y un POST armado
+// a mano no tiene por que hacerlo.
+func consolidar(carrito []ItemCarrito) ([]ItemCarrito, error) {
+	consolidado := make([]ItemCarrito, 0, len(carrito))
+	posicion := make(map[uint]int, len(carrito))
+	for _, ic := range carrito {
+		if ic.Cantidad <= 0 {
+			return nil, dom.Validacion("la cantidad debe ser mayor a cero")
+		}
+		if i, ok := posicion[ic.VarianteID]; ok {
+			consolidado[i].Cantidad += ic.Cantidad
+			continue
+		}
+		posicion[ic.VarianteID] = len(consolidado)
+		consolidado = append(consolidado, ic)
+	}
+	return consolidado, nil
 }
 
 // calcularEnvio implementa la regla 3. El umbral entra por configuracion,
