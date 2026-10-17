@@ -97,7 +97,7 @@ realmente una imagen de esa extensión, máximo `MAX_IMAGEN_MB` (5 por defecto),
 hasta 8 imágenes por producto y una sola principal (`orden = 0`) por color.
 
 > Si subís `MAX_IMAGEN_MB`, subí también `client_max_body_size` en
-> [`app/frontend/nginx.conf`](app/frontend/nginx.conf): tiene que quedar por encima, o
+> [`app/frontend/default.conf.template`](app/frontend/default.conf.template): tiene que quedar por encima, o
 > nginx corta la subida con un `413` crudo antes de que el backend pueda explicar el error.
 
 ## Levantar desde el registry (sin construir)
@@ -219,7 +219,7 @@ app/                       la aplicación
       services/api.js      cliente HTTP (rutas relativas)
       utils.js             lógica pura testeable
       pages/               vistas
-    nginx.conf             proxy /api y /uploads hacia el backend
+    default.conf.template  config de nginx: proxy /api y /uploads hacia el backend del entorno
 ```
 
 ## Documentación del proyecto

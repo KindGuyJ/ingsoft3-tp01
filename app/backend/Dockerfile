@@ -27,6 +27,8 @@ ENTRYPOINT ["sh", "./cobertura.sh"]
 
 # ---- Etapa 3: runtime (imagen minima, sin toolchain) ----
 FROM alpine:3.20 AS final
+# Asocia el paquete de ghcr.io con el repo (y le da permiso al pipeline de publicarlo).
+LABEL org.opencontainers.image.source=https://github.com/KindGuyJ/ingsoft3-tp01
 RUN adduser -D -u 10001 app
 WORKDIR /app
 RUN mkdir -p /app/uploads && chown app:app /app/uploads

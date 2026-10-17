@@ -1,0 +1,58 @@
+# Plantilla, no config final: la imagen oficial de nginx procesa los archivos de
+# /etc/nginx/templates/ al arrancar y reemplaza ${VARIABLE} por su valor del
+# entorno. Asi la direccion del backend NO queda adentro de la imagen, y la
+# misma imagen sirve en compose, QA y PROD (TP6).
+#
+# Solo se reemplazan las variables que existen en el entorno, asi que las de
+# nginx ($uri, $host...) pasan intactas.
+server {
+    listen 80;
+
+    # SPA: estáticos con fallback a index.html para las rutas del router.
+    location / {
+        root /usr/share/nginx/html;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # El DNS y la direccion del backend llegan por entorno. En compose: el DNS
+    # de Docker y el nombre del servicio (los defaults del Dockerfile). En
+    # Render: un DNS publico y la URL de la api de ESTE entorno.
+    #
+    # Sigue siendo UN SOLO resolver: agregar otro "por las dudas" hace que nginx
+    # reparta las consultas y produce 502 intermitentes.
+    resolver ${DNS_RESOLVER} valid=10s ipv6=off;
+    set $backend_api ${BACKEND_URL};
+
+    # En Render la api es https: sin esto el TLS no le dice al otro lado a que
+    # host va, y la conexion falla. En compose (http) no tiene efecto.
+    proxy_ssl_server_name on;
+
+    # ⚠️ No se pisa el header Host. Por defecto nginx manda el host de
+    # BACKEND_URL, que es lo que Render usa para saber a que servicio va el
+    # pedido. Con "proxy_set_header Host $host" le llegaria el host del FRONT y
+    # el pedido no encontraria la api.
+
+    # ⚠️ proxy_pass SIN barra al final. Con barra, nginx reescribe el prefijo
+    # y /api/productos llega al backend como /productos → 404 en todo.
+    location /api/ {
+        proxy_pass $backend_api;
+        proxy_set_header X-Real-IP $remote_addr;
+
+        # Subida de imagenes del admin. El default de nginx es 1 MB: sin esta
+        # linea, una foto de celular de 3 MB muere en un 413 crudo ANTES de
+        # llegar al backend, y el error no se parece en nada a un problema de
+        # subida.
+        #
+        # Tiene que quedar POR ENCIMA de MAX_IMAGEN_MB (.env) para que el que
+        # corte sea el backend, con su mensaje explicado, y no nginx.
+        client_max_body_size 10m;
+    }
+
+    # Las imágenes que sube el admin las sirve el backend desde su volumen.
+    # Si falta este bloque, las fotos subidas dan 404 mientras las estáticas
+    # de /productos/ andan perfecto — síntoma confuso.
+    location /uploads/ {
+        proxy_pass $backend_api;
+    }
+}
