@@ -1,15 +1,22 @@
 /* CSS a mano, sin framework. Es una dependencia menos que instalar, auditar y
    explicar; para seis pantallas alcanza de sobra. */
 
+/* Estilo: tienda de moda minimalista. Blanco y negro, una barra negra de
+   secciones, titulos con serif y textos chicos en mayusculas espaciadas.
+   Las fuentes son las del sistema a proposito: una fuente de Google Fonts
+   seria una dependencia externa, y el sistema tiene que levantar offline. */
+
 :root {
-  --tinta: #1c1c1c;
+  --tinta: #111;
   --suave: #6b6b6b;
-  --borde: #e2e2e2;
-  --fondo: #fafafa;
-  --acento: #1f5f8b;
+  --borde: #e4e4e4;
+  --fondo: #fff;
+  --crema: #f1ece4;          /* el fondo de la portada */
+  --acento: #111;            /* los links son negros, como el resto */
   --error: #b3261e;
   --ok: #1b5e20;
-  --radio: 8px;
+  --radio: 0;                /* esquinas rectas en todo */
+  --serif: Georgia, "Times New Roman", serif;
 }
 
 * { box-sizing: border-box; }
@@ -25,60 +32,112 @@ body {
 a { color: var(--acento); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-h1 { font-size: 1.6rem; margin: 0 0 1rem; }
-h2 { font-size: 1.2rem; margin: 1.5rem 0 .75rem; }
+h1, h2 { font-family: var(--serif); font-weight: 400; }
+h1 { font-size: 1.9rem; margin: 0 0 1rem; }
+h2 { font-size: 1.3rem; margin: 1.5rem 0 .75rem; }
 h3 { font-size: 1rem; margin: .5rem 0; }
 
 /* --- Estructura ---------------------------------------------------------- */
 
 .app { min-height: 100vh; display: flex; flex-direction: column; }
 
-.barra {
-  display: flex; align-items: center; gap: 1.5rem;
-  padding: .75rem 1.5rem;
-  background: #fff;
-  border-bottom: 1px solid var(--borde);
-  flex-wrap: wrap;
+/* Piso de arriba: sesion | marca centrada | carrito. Tres columnas iguales
+   para que la marca quede centrada aunque los costados midan distinto. */
+.cabecera-arriba {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  gap: 1rem; padding: 1rem 1.5rem;
 }
-.marca { font-weight: 700; font-size: 1.1rem; color: var(--tinta); }
-.nav { display: flex; gap: 1rem; }
-.nav a.active { font-weight: 600; text-decoration: underline; }
-.sesion { margin-left: auto; display: flex; align-items: center; gap: 1rem; }
-.hola { color: var(--suave); font-size: .9rem; }
+.sesion, .carrito-link {
+  text-transform: uppercase; letter-spacing: .14em; font-size: .72rem;
+}
+.sesion { display: flex; align-items: center; gap: 1rem; }
+.sesion a, .carrito-link { color: var(--suave); }
+.sesion a:hover, .carrito-link:hover { color: var(--tinta); text-decoration: none; }
+.carrito-link { justify-self: end; }
+.hola { color: var(--suave); }
+
+.marca {
+  display: flex; flex-direction: column; align-items: center; color: var(--tinta);
+}
+.marca:hover { text-decoration: none; }
+.marca-logo { width: 32px; height: 32px; margin-bottom: .25rem; }
+.marca-nombre {
+  font-family: var(--serif); font-size: 1.5rem; letter-spacing: .3em;
+  text-transform: uppercase; line-height: 1;
+  padding-left: .3em;   /* compensa el letter-spacing de la ultima letra */
+}
+.marca-bajada {
+  text-transform: uppercase; letter-spacing: .35em; font-size: .62rem;
+  color: var(--suave); padding-left: .35em;
+}
+
+/* Piso de abajo: la barra negra de secciones. */
+.nav {
+  display: flex; justify-content: center; gap: 2rem; flex-wrap: wrap;
+  background: var(--tinta); padding: .6rem 1.5rem;
+}
+.nav a {
+  color: #fff; text-transform: uppercase; letter-spacing: .14em; font-size: .72rem;
+  padding-bottom: .15rem; border-bottom: 1px solid transparent;
+}
+.nav a:hover { text-decoration: none; border-bottom-color: #fff; }
+.nav a.active { border-bottom-color: #fff; }
+
+@media (max-width: 600px) {
+  .cabecera-arriba { grid-template-columns: 1fr; justify-items: center; }
+  .carrito-link { justify-self: center; }
+}
 
 .badge {
   display: inline-block; margin-left: .35rem; padding: 0 .4rem;
-  background: var(--acento); color: #fff; border-radius: 999px; font-size: .75rem;
+  background: var(--tinta); color: #fff; border-radius: 999px; font-size: .7rem;
+  letter-spacing: 0;
 }
 
 .contenido { flex: 1; width: 100%; max-width: 1000px; margin: 0 auto; padding: 1.5rem; }
-.pie { padding: 1rem 1.5rem; color: var(--suave); font-size: .8rem; text-align: center; }
+.pie {
+  padding: 1.25rem 1.5rem; color: var(--suave); text-align: center;
+  border-top: 1px solid var(--borde);
+  text-transform: uppercase; letter-spacing: .14em; font-size: .68rem;
+}
 
 /* --- Catálogo ------------------------------------------------------------ */
 
-.filtros { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
-.chip {
-  border: 1px solid var(--borde); background: #fff; color: var(--tinta);
-  padding: .3rem .8rem; border-radius: 999px; cursor: pointer; font-size: .9rem;
-  text-transform: capitalize;
+/* Portada: banda crema con un titulo grande en serif. */
+.portada {
+  background: var(--crema); padding: 3.5rem 1.5rem; margin: -1.5rem -1.5rem 2rem;
+  text-align: center;
 }
-.chip.activo { background: var(--tinta); color: #fff; border-color: var(--tinta); }
+.portada-titulo { font-family: var(--serif); font-size: 2.4rem; margin: 0; line-height: 1.15; }
+.portada-bajada { color: var(--suave); margin: .75rem 0 0; }
+
+/* Los filtros son links de texto en mayusculas, subrayados cuando estan activos. */
+.filtros { display: flex; gap: .75rem 1.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.chip {
+  border: 0; border-bottom: 1px solid transparent; background: none; color: var(--suave);
+  padding: 0 0 .15rem; cursor: pointer;
+  text-transform: uppercase; letter-spacing: .14em; font-size: .72rem;
+}
+.chip:hover { color: var(--tinta); }
+.chip.activo { color: var(--tinta); border-bottom-color: var(--tinta); }
 
 .grilla {
-  display: grid; gap: 1rem;
+  display: grid; gap: 1.75rem 1.25rem;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
 }
 
-.card {
-  background: #fff; border: 1px solid var(--borde); border-radius: var(--radio);
-  overflow: hidden; color: inherit; display: block;
+/* Tarjetas sin borde: manda la foto, y los datos van centrados abajo. */
+.card { background: none; color: inherit; display: block; }
+.card:hover { text-decoration: none; }
+.card:hover .card-foto img { opacity: .9; }
+.card-foto { position: relative; aspect-ratio: 3 / 4; background: #f0f0f0; overflow: hidden; }
+.card-foto img { width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity .2s; }
+.card-datos { padding: .75rem 0 0; text-align: center; }
+.card-datos h3 { margin: 0 0 .2rem; font-size: .95rem; font-weight: 400; }
+.categoria {
+  color: var(--suave); margin: 0;
+  text-transform: uppercase; letter-spacing: .14em; font-size: .68rem;
 }
-.card:hover { border-color: var(--acento); text-decoration: none; }
-.card-foto { position: relative; aspect-ratio: 3 / 4; background: #f0f0f0; }
-.card-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.card-datos { padding: .75rem; }
-.card-datos h3 { margin: 0 0 .2rem; font-size: .95rem; }
-.categoria { color: var(--suave); font-size: .8rem; margin: 0; text-transform: capitalize; }
 .precio { font-weight: 600; margin: .35rem 0 0; }
 .precio.grande { font-size: 1.4rem; }
 
@@ -148,11 +207,15 @@ input[type="file"] { max-width: 15rem; padding: .35rem; }
 .check { display: flex; align-items: center; font-size: .9rem; color: var(--suave); }
 
 button { font: inherit; }
+/* Boton con borde, que se rellena al pasar el mouse. */
 .primario {
-  background: var(--tinta); color: #fff; border: 0;
-  padding: .6rem 1.2rem; border-radius: var(--radio); cursor: pointer;
+  background: #fff; color: var(--tinta); border: 1px solid var(--tinta);
+  padding: .65rem 1.4rem; border-radius: var(--radio); cursor: pointer;
+  text-transform: uppercase; letter-spacing: .14em; font-size: .72rem;
+  transition: background .15s, color .15s;
 }
-.primario:disabled { background: #bdbdbd; cursor: not-allowed; }
+.primario:hover:not(:disabled) { background: var(--tinta); color: #fff; }
+.primario:disabled { color: #bdbdbd; border-color: #d6d6d6; cursor: not-allowed; }
 .boton { display: inline-block; }
 a.primario:hover { text-decoration: none; }
 

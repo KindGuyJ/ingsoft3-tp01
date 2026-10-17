@@ -48,6 +48,12 @@ export default function Catalogo() {
 
   return (
     <section>
+      {/* Portada: solo texto, sin foto, para no depender de una imagen mas. */}
+      <div className="portada">
+        <p className="portada-titulo">Indumentaria esencial</p>
+        <p className="portada-bajada">Básicos de algodón, buzos y camperas para todos los días.</p>
+      </div>
+
       <h1>Catálogo</h1>
 
       <div className="filtros">
