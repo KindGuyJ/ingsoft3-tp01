@@ -1187,9 +1187,11 @@ producto, como un medio de pago nuevo.
 3. Espero que Render lo marque *live* en los dos servicios y compruebo `/healthz`.
 4. Recién entonces investigo, con PROD estable.
 
-**Lo medí una vez, de `540790d` a `1b1c000`: 61 segundos.** Disparé los dos hooks a las
-18:08:10 y a las 18:09:11 `/healthz` de PROD dejó de contestar `540790d` (la versión vieja
-no informa commit). El registro queda en *Render → Deploys* de los dos servicios de PROD.
+**Lo medí una vez, de `540790d` a `1b1c000`: 1 minuto 9 segundos.** Es lo que tardó la
+api según *Render → Deploys* (el front tardó 24 s): PROD no está recuperado hasta que
+vuelven los dos, así que manda el más lento. Disparé los dos hooks a las 18:08:10. Como
+contraste, `/healthz` de PROD dejó de contestar `540790d` a las 18:09:11 (61 s): ese reloj
+para cuando la api vieja empieza a contestar, un poco antes de que Render la marque *live*.
 Fue rápido porque Render ya había construido ese commit y reutilizó capas; con un build
 desde cero serían los 2 a 5 minutos de cada build.
 
