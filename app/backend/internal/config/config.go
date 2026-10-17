@@ -15,6 +15,12 @@ import (
 type Config struct {
 	Puerto string
 
+	// El commit que esta corriendo. Lo informa /healthz para que el smoke del
+	// pipeline pueda comprobar que contesta la version recien desplegada y no
+	// la anterior. APP_COMMIT si se pasa a mano; si no, RENDER_GIT_COMMIT, que
+	// Render define solo en cada deploy. Vacio en compose: ahi no hace falta.
+	Commit string
+
 	DBHost   string
 	DBPort   string
 	DBUser   string
@@ -46,6 +52,7 @@ type Config struct {
 func Cargar() (*Config, error) {
 	c := &Config{
 		Puerto:     get("PORT", "8080"),
+		Commit:     get("APP_COMMIT", get("RENDER_GIT_COMMIT", "")),
 		DBHost:     get("DB_HOST", "localhost"),
 		DBPort:     get("DB_PORT", "5432"),
 		DBUser:     get("DB_USER", "tienda"),

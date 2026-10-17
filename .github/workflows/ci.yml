@@ -208,6 +208,7 @@ jobs:
         env:
           URL_API: https://tienda-api-qa.onrender.com
           URL_FRONT: https://tienda-front-qa.onrender.com
+          COMMIT_ESPERADO: ${{ github.sha }}   # verde solo si contesta ESTE commit
         run: .github/scripts/smoke-entorno.sh
 
   deploy-prod:
@@ -246,4 +247,5 @@ jobs:
           # Con sufijo: tienda-api-prod.onrender.com ya era de otra persona.
           URL_API: https://tienda-api-prod-39qz.onrender.com
           URL_FRONT: https://tienda-front-prod.onrender.com
+          COMMIT_ESPERADO: ${{ github.sha }}
         run: .github/scripts/smoke-entorno.sh
