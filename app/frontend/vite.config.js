@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite'
+import { configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
@@ -16,6 +17,10 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    // TP7: e2e/ es de Playwright (las dos suites, la de api y la de navegador).
+    // Sin esto vitest levanta tambien esos *.spec.js, explota, y deja en rojo
+    // el job build-frontend. Cada runner con su carpeta.
+    exclude: [...configDefaults.exclude, 'e2e/**'],
     coverage: {
       provider: 'v8',
       // json-summary deja coverage-summary.json: lo lee el pipeline para el Summary.

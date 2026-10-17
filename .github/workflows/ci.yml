@@ -225,11 +225,91 @@ jobs:
           COMMIT_ESPERADO: ${{ github.sha }}   # verde solo si contesta ESTE commit
         run: .github/scripts/smoke-entorno.sh
 
+  # ==================== TP7: las pruebas como gate ====================
+  #
+  #   deploy-qa → integracion → e2e → [aprobación] → deploy-prod
+  #
+  # Integracion primero: es mas rapida y mas barata. Si la api esta rota, no se
+  # gasta un browser en confirmarlo (la e2e queda salteada por su needs).
+  # 🔴 Nada de continue-on-error, || true ni if: always() en este tramo: el
+  # gate tiene que poder decir que no. Los unicos !cancelled() son los de los
+  # pasos que publican el reporte, que importa MAS cuando algo fallo.
+  #
+  # environment: qa por los secrets: las credenciales del admin de QA viven en
+  # ese environment, como los hooks. Un PR nunca las lee.
+
+  integracion:
+    runs-on: ubuntu-latest
+    needs: deploy-qa                         # QA ya ejecuta la imagen de ESTA corrida
+    environment: qa
+    timeout-minutes: 15
+    steps:
+      - name: Bajar el código al runner
+        uses: actions/checkout@v6
+      - name: Preparar Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app/frontend/package-lock.json
+      - name: Instalar dependencias (sin browser)
+        run: npm ci                          # sin playwright install: esta suite no abre navegador
+        working-directory: ./app/frontend
+      - name: Integración contra la api de QA
+        env:
+          API_BASE_URL: https://tienda-api-qa.onrender.com   # la API, no el front
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+        run: npx playwright test e2e/api.spec.js
+        working-directory: ./app/frontend
+      - name: Publicar el reporte de integración
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-integracion  # distinto del de e2e: dos iguales rompen la corrida
+          path: app/frontend/playwright-report
+          retention-days: 7
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: integracion                       # si la api esta rota, no se gasta un browser
+    environment: qa
+    timeout-minutes: 20                      # si algo se cuelga, el job muere en vez de esperar horas
+    steps:
+      - name: Bajar el código al runner
+        uses: actions/checkout@v6
+      - name: Preparar Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app/frontend/package-lock.json
+      - name: Instalar dependencias y Chromium
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+        working-directory: ./app/frontend
+      - name: e2e contra el front de QA
+        env:
+          E2E_BASE_URL: https://tienda-front-qa.onrender.com  # el FRONT
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+        run: npx playwright test e2e/tienda.spec.js   # SU archivo: sin esto correria tambien la integracion
+        working-directory: ./app/frontend
+      - name: Publicar el reporte e2e
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-e2e
+          path: app/frontend/playwright-report
+          retention-days: 7
+
   deploy-prod:
     runs-on: ubuntu-latest
-    # Sin el if de rama, y no es un olvido: depende de deploy-qa, que si lo
-    # tiene. En un PR ninguno de los dos corre: la condicion se hereda.
-    needs: deploy-qa
+    # Sin el if de rama, y no es un olvido: depende (via e2e → integracion) de
+    # deploy-qa, que si lo tiene. En un PR ninguno corre: se hereda.
+    # 🔴 EL gate: sin e2e verde, ni siquiera se pide aprobacion.
+    needs: e2e
     environment:
       name: production                       # ⏸ el job NO arranca hasta que el reviewer apruebe
       url: https://tienda-front-prod.onrender.com
