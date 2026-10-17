@@ -82,8 +82,11 @@ func main() {
 
 	// Healthcheck: lo usa el healthcheck del compose y, mas adelante, el
 	// pipeline de CD del TP6 para saber si el deploy quedo sano.
+	// TP6: ademas informa el commit, para que el smoke compruebe que contesta
+	// la version recien desplegada (Render sigue sirviendo la anterior mientras
+	// construye).
 	r.GET("/healthz", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "commit": cfg.Commit})
 	})
 
 	// Archivos subidos por el admin. Se sirven desde el volumen montado.
