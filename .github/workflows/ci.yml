@@ -94,6 +94,9 @@ jobs:
           context: ./app/backend
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: ghcr.io/kindguyj/tienda-backend:sha-${{ github.sha }}
+          # TP7: el commit queda adentro de la imagen y la api lo devuelve en
+          # /healthz. Render ya no construye, asi que no hay otro que lo diga.
+          build-args: COMMIT=${{ github.sha }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
 
@@ -168,16 +171,24 @@ jobs:
           context: ./app/frontend
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: ghcr.io/kindguyj/tienda-frontend:sha-${{ github.sha }}
+          build-args: COMMIT=${{ github.sha }}   # → /version.txt (mismo criterio)
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 
-  # ==================== TP6: la promoción ====================
+  # ==================== TP6/TP7: la promoción ====================
   #
   #   build-* (verde) → deploy-qa (automático) → [aprobación] → deploy-prod
   #
-  # 🚨 Limitación sabida (TP6 §3.2): el deploy hook le pide a Render que VUELVA A
-  # CONSTRUIR el commit desde el repo. Se despliega el commit verificado, pero no
-  # la imagen verificada que publicaron los jobs de arriba. El TP7 lo cambia.
+  # TP7: los cuatro servicios de Render son "Existing Image". El hook ya no le
+  # pide a Render que construya un commit: le dice QUE IMAGEN ejecutar
+  # (imgURL=...:sha-<commit>). QA y PROD corren la misma imagen que publicaron
+  # los jobs de arriba, bit a bit: build once, deploy many.
+  #
+  # La URL del hook va ULTIMA en el curl: es el unico argumento suelto, y
+  # --data-urlencode se lleva el valor que tiene al lado. --get agrega imgURL
+  # con '&' (el hook ya trae ?key=...) y le codifica los ':' y '/'.
+  # Si el tag no existe, o si la imagen no es la configurada en el servicio,
+  # Render contesta 400 y el -f pone el paso en rojo.
 
   deploy-qa:
     runs-on: ubuntu-latest
@@ -191,17 +202,20 @@ jobs:
       - name: Bajar el código al runner (para el script del smoke)
         uses: actions/checkout@v6
 
-      # 🔴 El &ref= es lo que hace que se despliegue EL COMMIT VERIFICADO. Un hook
-      # pelado despliega la punta de main: con dos merges seguidos, la corrida
-      # de A desplegaria B, que todavia no paso por nada.
-      # Va & y no ? porque la URL del hook ya trae ?key=...
-      - name: Disparar el deploy en Render (api + front) del commit verificado
+      # 🔴 El sha de ESTA corrida, no la punta de main: con dos merges seguidos,
+      # la corrida de A no puede desplegar B, que todavia no paso por nada.
+      - name: Desplegar en QA la IMAGEN del commit (api + front)
+        shell: bash
         env:
           HOOK_API: ${{ secrets.RENDER_HOOK_API_QA }}
           HOOK_FRONT: ${{ secrets.RENDER_HOOK_FRONT_QA }}
+          IMG_API: ghcr.io/kindguyj/tienda-backend:sha-${{ github.sha }}
+          IMG_FRONT: ghcr.io/kindguyj/tienda-frontend:sha-${{ github.sha }}
         run: |
-          curl -fsS --max-time 30 "$HOOK_API&ref=$GITHUB_SHA"; echo
-          curl -fsS --max-time 30 "$HOOK_FRONT&ref=$GITHUB_SHA"; echo
+          echo "imgURL api:   $IMG_API"
+          echo "imgURL front: $IMG_FRONT"
+          curl -fsS --max-time 30 --get --data-urlencode "imgURL=$IMG_API" "$HOOK_API"; echo
+          curl -fsS --max-time 30 --get --data-urlencode "imgURL=$IMG_FRONT" "$HOOK_FRONT"; echo
 
       - name: Smoke test de QA (con reintentos)
         shell: bash
@@ -231,15 +245,20 @@ jobs:
         uses: actions/checkout@v6
 
       # 🔴 Aca mas que en ningun lado: entre que la corrida queda esperando y
-      # que alguien aprueba pueden pasar horas, y main se mueve. Sin &ref= se
-      # aprobaria el commit A y a PROD subiria lo ultimo que haya.
-      - name: Disparar el deploy en Render (api + front) del commit aprobado
+      # que alguien aprueba pueden pasar horas, y main se mueve. Por eso la
+      # imagen se nombra con el sha de la corrida: la MISMA que verifico QA.
+      - name: Desplegar en PROD la MISMA imagen que verificó QA (api + front)
+        shell: bash
         env:
           HOOK_API: ${{ secrets.RENDER_HOOK_API_PROD }}
           HOOK_FRONT: ${{ secrets.RENDER_HOOK_FRONT_PROD }}
+          IMG_API: ghcr.io/kindguyj/tienda-backend:sha-${{ github.sha }}
+          IMG_FRONT: ghcr.io/kindguyj/tienda-frontend:sha-${{ github.sha }}
         run: |
-          curl -fsS --max-time 30 "$HOOK_API&ref=$GITHUB_SHA"; echo
-          curl -fsS --max-time 30 "$HOOK_FRONT&ref=$GITHUB_SHA"; echo
+          echo "imgURL api:   $IMG_API"
+          echo "imgURL front: $IMG_FRONT"
+          curl -fsS --max-time 30 --get --data-urlencode "imgURL=$IMG_API" "$HOOK_API"; echo
+          curl -fsS --max-time 30 --get --data-urlencode "imgURL=$IMG_FRONT" "$HOOK_FRONT"; echo
 
       - name: Smoke test de PROD (con reintentos)
         shell: bash

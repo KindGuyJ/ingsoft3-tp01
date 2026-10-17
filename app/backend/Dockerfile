@@ -36,5 +36,11 @@ COPY --from=build /api /bin/api
 COPY --from=build /seed /bin/seed
 USER app
 ENV GIN_MODE=release
+# TP7: el commit del que salio la imagen, horneado adentro. Lo pasa el pipeline
+# (build-args: COMMIT=<sha>) y la api lo devuelve en /healthz. Va al final: es
+# lo unico que cambia en cada commit, y asi no invalida el cache de lo de arriba.
+# Vacio en compose, que construye sin pasarlo.
+ARG COMMIT=""
+ENV APP_COMMIT=$COMMIT
 EXPOSE 8080
 ENTRYPOINT ["/bin/api"]

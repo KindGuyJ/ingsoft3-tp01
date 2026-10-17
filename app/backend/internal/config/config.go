@@ -17,8 +17,10 @@ type Config struct {
 
 	// El commit que esta corriendo. Lo informa /healthz para que el smoke del
 	// pipeline pueda comprobar que contesta la version recien desplegada y no
-	// la anterior. APP_COMMIT si se pasa a mano; si no, RENDER_GIT_COMMIT, que
-	// Render define solo en cada deploy. Vacio en compose: ahi no hace falta.
+	// la anterior. APP_COMMIT viene horneado en la imagen (ARG COMMIT del
+	// Dockerfile, que el pipeline pasa con build-args): desde el TP7 Render
+	// ejecuta la imagen y no construye nada, asi que ya no define
+	// RENDER_GIT_COMMIT. Vacio en compose: ahi no hace falta.
 	Commit string
 
 	DBHost   string
@@ -52,7 +54,7 @@ type Config struct {
 func Cargar() (*Config, error) {
 	c := &Config{
 		Puerto:     get("PORT", "8080"),
-		Commit:     get("APP_COMMIT", get("RENDER_GIT_COMMIT", "")),
+		Commit:     get("APP_COMMIT", ""),
 		DBHost:     get("DB_HOST", "localhost"),
 		DBPort:     get("DB_PORT", "5432"),
 		DBUser:     get("DB_USER", "tienda"),
