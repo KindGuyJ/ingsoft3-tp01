@@ -15,7 +15,7 @@ import (
 	"log"
 	"strings"
 
-	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
 	"github.com/KindGuyJ/ingsoft3-tp01/app/backend/internal/config"
@@ -41,9 +41,9 @@ func main() {
 		log.Fatalf("configuracion invalida: %v", err)
 	}
 
-	db, err := gorm.Open(mysql.Open(cfg.DSN()), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{})
 	if err != nil {
-		log.Fatalf("no se pudo conectar a MySQL: %v", err)
+		log.Fatalf("no se pudo conectar a la base: %v", err)
 	}
 
 	// Mismo AutoMigrate que la API: el seed puede correr antes que ella.

@@ -1,4 +1,4 @@
-// Package dao contiene las entidades GORM que mapean a las tablas de MySQL.
+// Package dao contiene las entidades GORM que mapean a las tablas de la base (Postgres).
 package dao
 
 import "time"

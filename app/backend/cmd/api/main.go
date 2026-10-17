@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
 	"github.com/KindGuyJ/ingsoft3-tp01/app/backend/internal/config"
@@ -22,13 +22,13 @@ func main() {
 		log.Fatalf("configuracion invalida: %v", err)
 	}
 
-	db, err := gorm.Open(mysql.Open(cfg.DSN()), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{})
 	if err != nil {
-		log.Fatalf("no se pudo conectar a MySQL: %v", err)
+		log.Fatalf("no se pudo conectar a la base: %v", err)
 	}
 
-	// AutoMigrate crea las tablas al arrancar. El MySQL del compose nace con la
-	// base vacia, asi que sin esto la app levanta y falla en la primera query.
+	// AutoMigrate crea las tablas al arrancar. La base (del compose o de Neon) nace
+	// vacia, asi que sin esto la app levanta y falla en la primera query.
 	// TODO(TP5+): migrar a migraciones versionadas; AutoMigrate no borra ni
 	// renombra columnas y se vuelve insuficiente en cuanto el schema evoluciona.
 	if err := db.AutoMigrate(

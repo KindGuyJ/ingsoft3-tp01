@@ -7,7 +7,7 @@ import (
 	dom "github.com/KindGuyJ/ingsoft3-tp01/app/backend/internal/errors"
 )
 
-// Fake en memoria del repo de usuarios. Igual que el de pedidos: sin MySQL.
+// Fake en memoria del repo de usuarios. Igual que el de pedidos: sin base.
 type fakeUsuarioRepo struct {
 	porEmail map[string]*dao.Usuario
 	proximo  uint

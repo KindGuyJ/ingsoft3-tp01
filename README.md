@@ -10,7 +10,7 @@ entrega.
 | Capa | Tecnología |
 |---|---|
 | Backend | Go 1.24 + Gin + GORM |
-| Base de datos | MySQL 8.4 |
+| Base de datos | PostgreSQL 17 |
 | Frontend | React + Vite, servido por nginx |
 | Orquestación | Docker Compose |
 | CI | GitHub Actions |
@@ -119,11 +119,11 @@ Para sembrarla: `docker compose -f docker-compose.registry.yml exec backend /bin
 
 ```bash
 # Base de datos como contenedor suelto
-docker run -d --name mysql-tienda -e MYSQL_ROOT_PASSWORD=root \
-  -e MYSQL_DATABASE=tienda -p 3306:3306 mysql:8.4
+docker run -d --name pg-tienda -e POSTGRES_USER=tienda -e POSTGRES_PASSWORD=tienda \
+  -e POSTGRES_DB=tienda -p 5432:5432 postgres:17-alpine
 
 # Backend → http://localhost:8080
-cd app/backend && DB_HOST=localhost JWT_SECRET=dev go run ./cmd/api
+cd app/backend && DB_HOST=localhost DB_PASS=tienda JWT_SECRET=dev go run ./cmd/api
 
 # Frontend → http://localhost:5173 (Vite proxea /api al backend)
 cd app/frontend && npm install && npm run dev
@@ -154,7 +154,7 @@ Los umbrales y qué entra en la cuenta están en [`decisiones.md`](decisiones.md
 [`app/smoke-test.sh`](app/smoke-test.sh) recorre la API entera con `curl` — registro,
 login, checkout, cancelación y el ABM del admin — verificando el código HTTP de cada paso
 y el efecto sobre el stock. Prueba lo que los tests unitarios no pueden: que el ruteo, el
-JWT, GORM y MySQL funcionan **juntos**.
+JWT, GORM y Postgres funcionan **juntos**.
 
 ```bash
 cd app

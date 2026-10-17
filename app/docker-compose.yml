@@ -2,16 +2,21 @@ name: tienda-indumentaria
 services:
   # ==================== Base de datos ====================
   db:
-    image: mysql:8.4
+    # Postgres y no MySQL desde el TP6: es lo que ofrece Neon, el proveedor de
+    # QA y PROD. La version es la misma en dev que en los entornos.
+    image: postgres:17-alpine
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASS}
-      MYSQL_DATABASE: ${DB_SCHEMA}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_DB: ${DB_SCHEMA}
     volumes:
       # Volumen NOMBRADO (no bind mount): los datos sobreviven a que el
-      # contenedor se destruya y se recree.
-      - db_data:/var/lib/mysql
+      # contenedor se destruya y se recree. Se llama pg_data y no db_data
+      # para no montar el volumen viejo de MySQL: Postgres no inicializa sobre
+      # un directorio con archivos ajenos.
+      - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${DB_PASS}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_SCHEMA}"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -22,10 +27,11 @@ services:
     build: ./backend
     environment:
       DB_HOST: db
-      DB_PORT: 3306
+      DB_PORT: 5432
       DB_USER: ${DB_USER}
       DB_PASS: ${DB_PASS}
       DB_SCHEMA: ${DB_SCHEMA}
+      DB_SSLMODE: disable   # red interna de Docker; en Neon va "require"
       JWT_SECRET: ${JWT_SECRET}
       JWT_HORAS: ${JWT_HORAS}
       UMBRAL_ENVIO_GRATIS: ${UMBRAL_ENVIO_GRATIS}
@@ -41,7 +47,7 @@ services:
     depends_on:
       db:
         # No alcanza con que el contenedor haya arrancado: hay que esperar a
-        # que MySQL acepte conexiones. Eso es lo que agrega service_healthy.
+        # que Postgres acepte conexiones. Eso es lo que agrega service_healthy.
         condition: service_healthy
 
   # ==================== Frontend ====================
@@ -53,5 +59,5 @@ services:
       - backend
 
 volumes:
-  db_data:
+  pg_data:
   uploads_data:
