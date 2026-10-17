@@ -1187,8 +1187,16 @@ producto, como un medio de pago nuevo.
 3. Espero que Render lo marque *live* en los dos servicios y compruebo `/healthz`.
 4. Recién entonces investigo, con PROD estable.
 
-**Lo medí una vez:** TODO — de `540790d` a `1b1c000`, hook a las HH:MM:SS, *live* a las
-HH:MM:SS en *Render → Deploys*: N minutos.
+**Lo medí una vez, de `540790d` a `1b1c000`: 61 segundos.** Disparé los dos hooks a las
+18:08:10 y a las 18:09:11 `/healthz` de PROD dejó de contestar `540790d` (la versión vieja
+no informa commit). El registro queda en *Render → Deploys* de los dos servicios de PROD.
+Fue rápido porque Render ya había construido ese commit y reutilizó capas; con un build
+desde cero serían los 2 a 5 minutos de cada build.
+
+**Lo que aprendí haciéndolo:** después del rollback, *Deployments → production* seguía
+diciendo `540790d`. El rollback por hook pasa por fuera del pipeline y GitHub no se entera.
+A la pregunta «¿qué está corriendo en PROD?» contesta `/healthz`, no el historial de
+GitHub.
 
 **Lo que el rollback no deshace:** los datos. Pedidos escritos, stock movido o una columna
 borrada por una migración no vuelven con el código. Para eso haría falta un backup o un
