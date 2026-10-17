@@ -38,7 +38,7 @@ type Config struct {
 	//
 	// Va por entorno porque tiene que quedar por DEBAJO del client_max_body_size
 	// de nginx: si nginx corta primero, el cliente recibe un 413 crudo en vez
-	// del 400 explicado del backend. Ver frontend/nginx.conf.
+	// del 400 explicado del backend. Ver frontend/default.conf.template.
 	MaxImagenBytes int64
 }
 

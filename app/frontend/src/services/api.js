@@ -1,5 +1,5 @@
 // Cliente HTTP. Todas las URLs son RELATIVAS: nunca aparece un host ni un
-// puerto en el código del front. Ver vite.config.js y nginx.conf.
+// puerto en el código del front. Ver vite.config.js y default.conf.template.
 
 const TOKEN_KEY = 'token'
 const USUARIO_KEY = 'usuario'
