@@ -10,7 +10,7 @@ import (
 // ---------------------------------------------------------------------------
 // Fakes en memoria.
 //
-// No hay MySQL, no hay Docker, no hay red: el service solo conoce interfaces,
+// No hay base, no hay Docker, no hay red: el service solo conoce interfaces,
 // asi que se lo puede alimentar con esto. Por eso estos tests corren en
 // milisegundos y sirven como gate del pipeline (TP4).
 // ---------------------------------------------------------------------------

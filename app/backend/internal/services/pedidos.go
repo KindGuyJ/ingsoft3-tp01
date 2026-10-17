@@ -10,7 +10,7 @@ import (
 //
 // Se declaran ACA, en el paquete que las consume, no en repository/. Es el
 // idiom de Go y tiene una consecuencia practica importante: el service no
-// depende de GORM ni de MySQL, asi que se testea con un fake en memoria y los
+// depende de GORM ni de la base, asi que se testea con un fake en memoria y los
 // tests del TP5 corren en milisegundos sin levantar la base.
 // ---------------------------------------------------------------------------
 

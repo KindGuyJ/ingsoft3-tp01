@@ -11,7 +11,7 @@ import (
 // nombrado uploads_data.
 //
 // Vive en repository/ porque un archivo tambien es persistencia: es el mismo
-// rol que cumple MySQL para las filas. Satisface services.AlmacenImagenes, asi
+// rol que cumple la base para las filas. Satisface services.AlmacenImagenes, asi
 // que reemplazarlo por object storage en el TP6 es escribir otro tipo con el
 // mismo metodo, sin tocar una linea de services/.
 type AlmacenDisco struct{ dir string }

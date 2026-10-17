@@ -5,7 +5,7 @@
 #
 # No reemplaza a los tests de `go test ./internal/services/...`, que corren sin
 # base y prueban las reglas aisladas. Esto prueba lo que aquellos no pueden: que
-# el cableado de rutas, el middleware de JWT, GORM y MySQL funcionan JUNTOS.
+# el cableado de rutas, el middleware de JWT, GORM y Postgres funcionan JUNTOS.
 #
 # USO
 #   ./smoke-test.sh                        contra localhost:8080 (la API directo)

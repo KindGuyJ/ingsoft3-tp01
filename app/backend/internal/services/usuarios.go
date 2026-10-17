@@ -73,7 +73,7 @@ func (s *UsuariosService) Registrar(in Registro) (*dao.Usuario, error) {
 	}
 
 	// Email unico. Se consulta antes de insertar para poder devolver un 409
-	// entendible en vez del error de indice unico de MySQL.
+	// entendible en vez del error de indice unico de la base.
 	existente, err := s.usuarios.BuscarPorEmail(email)
 	if err != nil {
 		return nil, dom.Interno("no se pudo verificar el email", err)

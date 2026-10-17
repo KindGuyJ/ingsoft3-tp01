@@ -4,6 +4,8 @@ package config
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -17,6 +19,9 @@ type Config struct {
 	DBUser   string
 	DBPass   string
 	DBSchema string
+	// En el compose la base esta en la misma red y no usa TLS ("disable");
+	// Neon (TP6) solo acepta conexiones cifradas ("require").
+	DBSSLMode string
 
 	JWTSecret string
 	// Cuanto vale un token antes de vencer. Por entorno: en dev conviene
@@ -41,10 +46,11 @@ func Cargar() (*Config, error) {
 	c := &Config{
 		Puerto:     get("PORT", "8080"),
 		DBHost:     get("DB_HOST", "localhost"),
-		DBPort:     get("DB_PORT", "3306"),
-		DBUser:     get("DB_USER", "root"),
+		DBPort:     get("DB_PORT", "5432"),
+		DBUser:     get("DB_USER", "tienda"),
 		DBPass:     get("DB_PASS", ""),
 		DBSchema:   get("DB_SCHEMA", "tienda"),
+		DBSSLMode:  get("DB_SSLMODE", "disable"),
 		JWTSecret:  get("JWT_SECRET", ""),
 		UploadsDir: get("UPLOADS_DIR", "/app/uploads"),
 	}
@@ -82,10 +88,19 @@ func Cargar() (*Config, error) {
 	return c, nil
 }
 
-// DSN arma la cadena de conexion de MySQL.
+// DSN arma la cadena de conexion de Postgres, en formato URL.
+//
+// Usuario y contrasena pasan por url.UserPassword para que se escapen: una
+// contrasena con '@' o '/' romperia la URL si se pegara tal cual.
 func (c *Config) DSN() string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-		c.DBUser, c.DBPass, c.DBHost, c.DBPort, c.DBSchema)
+	u := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(c.DBUser, c.DBPass),
+		Host:     net.JoinHostPort(c.DBHost, c.DBPort),
+		Path:     c.DBSchema,
+		RawQuery: url.Values{"sslmode": {c.DBSSLMode}}.Encode(),
+	}
+	return u.String()
 }
 
 func get(clave, porDefecto string) string {
