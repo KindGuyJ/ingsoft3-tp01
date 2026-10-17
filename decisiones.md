@@ -1017,3 +1017,240 @@ del runner, y qué reglas usar para la demo.
 - Contra la API, no contra la pantalla: que `required_status_checks` siga siendo
   `build-backend` y `build-frontend` con `strict: true`, y que la corrida de `main` publique
   los dos artefactos de cobertura.
+
+---
+
+# Decisiones — TP6
+
+> Sin `evidencias.md`, como desde el TP3: el repositorio es público. El deploy a QA, el
+> smoke, el *Waiting for review*, la aprobación y el rechazo están en *Actions*; qué
+> commit está en cada entorno, en *Deployments*; la release, en *Releases*.
+
+## Enlaces de este TP
+
+| | |
+|---|---|
+| Paquete del backend | [ghcr.io/kindguyj/tienda-backend](https://github.com/users/KindGuyJ/packages/container/package/tienda-backend) |
+| Paquete del frontend | [ghcr.io/kindguyj/tienda-frontend](https://github.com/users/KindGuyJ/packages/container/package/tienda-frontend) |
+| PR con «Entrar al registry» salteado (solo `main` publica) | [corrida 39052064174](https://github.com/KindGuyJ/ingsoft3-tp01/actions/runs/39052064174) |
+| Corrida de `main` con publicar como último paso | [corrida 39055593851](https://github.com/KindGuyJ/ingsoft3-tp01/actions/runs/39055593851) |
+| QA | [front](https://tienda-front-qa.onrender.com) · [api](https://tienda-api-qa.onrender.com/healthz) |
+| PROD | [front](https://tienda-front-prod.onrender.com) · [api](https://tienda-api-prod-39qz.onrender.com/healthz) |
+
+Los dos paquetes se bajan sin credenciales:
+`docker pull --platform linux/amd64 ghcr.io/kindguyj/tienda-backend:sha-a83cfe3f5aa636959b9df2f5dcc7252bf210923d`.
+
+## 1. El artefacto: se publica solo lo que pasó la verificación
+
+Cada job termina en «Entrar al registry» y «Construir y publicar la imagen», con el tag
+`sha-<commit>`. El build de la imagen final, que en el TP4 estaba antes de los tests, lo
+moví al **final** del job.
+
+**No hay ningún `if` que diga «si los tests pasaron».** Los pasos de un job corren en orden
+y se cortan al primer error: si los tests fallan, el job muere y el paso que publica nunca
+corre. La condición está en el orden. Por eso esos pasos no llevan `!cancelled()` ni
+`always()`, a diferencia de los del reporte de cobertura.
+
+La cadena que hace que el registry sea confiable son tres eslabones: nada entra a `main`
+sin el pipeline en verde; solo `main` publica (`push:` exige evento `push` **y** rama
+`main`, para que una rama agregada al disparador no publique); y publicar es el último paso
+del mismo job que testea. Si se publicara igual con los tests en rojo, estar en el registry
+dejaría de querer decir «esto pasó la verificación».
+
+**Lo que no garantiza:** un `docker push` a mano entra igual. La cadena cubre lo que
+publica el pipeline. Y el tag `sha-…` se puede mover a otra imagen; lo que no se mueve es
+el *digest*, el hash del contenido.
+
+`permissions: packages: write` va **por job**: a nivel del workflow reemplazaría el
+default de todos los jobs. Publica el mismo paso que construye: un job aparte tendría que
+reconstruir, y lo publicado ya no sería lo verificado.
+
+## 2. La base: de MySQL a Postgres
+
+QA y PROD necesitan una base cada uno, en la nube. El proveedor gratuito, permanente y sin
+tarjeta es Neon, que es Postgres (el Postgres gratuito de Render vence a los 30 días).
+Cambié MySQL por Postgres ([PR #23](https://github.com/KindGuyJ/ingsoft3-tp01/pull/23)).
+
+**El cambio fue chico por la arquitectura en capas:** el driver en los dos `main.go`, la
+cadena de conexión en `config/` (con `DB_SSLMODE`: `disable` en compose, `require` en
+Neon) y el servicio `db` del compose. No había SQL propio de MySQL, y los services y sus
+tests no se enteraron. Las tablas las crea `AutoMigrate` al arrancar; el catálogo, el seed,
+corrido una vez contra cada base.
+
+**Cada entorno usa su propia base, y lo comprobé:** las dos nacieron con el mismo seed, así
+que el catálogo no distingue. Creé un producto `SOY PROD` solo en la base de PROD: aparece
+en el front y en la api de PROD (16 productos) y no en los de QA (15). Mirarlo por el front
+prueba además que cada front habla con su api.
+
+## 3. La dirección del backend no va en la imagen del front
+
+`nginx.conf` pasó a ser `default.conf.template`, que la imagen oficial de nginx procesa al
+arrancar reemplazando `${BACKEND_URL}` y `${DNS_RESOLVER}`. Los defaults del Dockerfile son
+los de compose (`http://backend:8080`, `127.0.0.11`); Render los pisa en cada servicio.
+**La misma imagen sirve en QA y en PROD**, que es lo que hace posible el TP7.
+
+- **Por variable:** la dirección del backend y el DNS.
+- **Adentro de la imagen:** el build de Vite, las fotos del seed y la estructura de la
+  config (rutas, `client_max_body_size`, `/uploads/`).
+
+**Saqué `proxy_set_header Host $host`.** Render decide a qué servicio va cada pedido por el
+header Host: con `$host` a la api le llegaba el host del front. Y agregué
+`proxy_ssl_server_name on`, porque la api de Render es https y sin SNI el TLS no sabe a qué
+host va. Sigue habiendo un solo resolver: lo que cambió es que llega por entorno.
+
+## 4. La promoción: QA automático, PROD con aprobación
+
+```
+build-backend ┐
+              ├→ deploy-qa (automático) → [aprobación] → deploy-prod
+build-frontend┘
+```
+
+**Implementé Continuous Delivery, no Deployment.** Todo cambio verificado llega solo a QA y
+queda listo para PROD, pero el último paso lo autoriza una persona. Para Continuous
+Deployment faltan tests de punta a punta y observabilidad que detecten un problema en
+producción sin un humano mirando; sin eso, automatizar el último paso es automatizar la
+propagación de errores.
+
+- `needs:` arma las compuertas; el `if` de rama en `deploy-qa` hace que los PRs verifiquen
+  y no desplieguen; `deploy-prod` no lo repite porque lo hereda por el `needs`.
+- **Los hooks se disparan con `&ref=$GITHUB_SHA`.** Sin eso Render despliega la punta de
+  `main`: con dos merges seguidos, la corrida de A desplegaría B, y en PROD se aprobaría un
+  commit y subiría otro.
+- **Secrets con alcance de entorno:** los hooks de QA viven en el environment `qa` y los de
+  PROD en `production`. A los de PROD no los lee ningún job sin aprobación.
+- **Auto-Deploy en Off** en los cuatro servicios: el deploy lo dispara el pipeline.
+- `concurrency: deploy-prod` evita dos deploys a PROD pisándose, pero no ordena la cola de
+  aprobaciones: con dos corridas esperando, rechazo la vieja a mano.
+
+**El smoke** (`.github/scripts/smoke-entorno.sh`) es uno solo para los dos entornos.
+Reintenta 30 × 20 s (build de Render + cold start del plan gratuito), con `--max-time` en
+cada `curl` para que un servicio despertándose no cuelgue el job. Prueba: `/healthz`, que la
+api llega a su base (`/api/productos`), que el front sirve, que **el front llega a su api**
+y que **`/healthz` informa el commit de la corrida**.
+
+El cuarto chequeo no es de más: al probar el script contra los entornos reales, el front de
+PROD apuntaba a `tienda-api-prod.onrender.com`, un servicio de otra persona (el mío tiene
+sufijo `-39qz`). Los tres de la guía daban verde; ése dio rojo con 503.
+
+El quinto llegó después ([PR #28](https://github.com/KindGuyJ/ingsoft3-tp01/pull/28)):
+Render sigue sirviendo la versión anterior mientras construye, así que el smoke podía dar
+verde contra la versión vieja. Ahora `/healthz` devuelve el commit (`RENDER_GIT_COMMIT`) y el
+verde exige que sea el de la corrida. **Sigue sin probar la versión del front.**
+
+**Lo que pierdo porque Render reconstruye:** el hook le pide a Render que construya el
+commit desde el repo. Promuevo el mismo commit, pero no la misma imagen: lo que corre no es
+lo que pasaron los tests sino otra construcción del mismo código, que podría salir distinta
+(una imagen base actualizada entre un build y otro). La imagen verificada queda en el
+registry sin usarse; desplegarla es el TP7.
+
+## 5. El gate: qué miro antes de aprobar
+
+1. `deploy-qa` en verde, y en qué intento pasó el smoke.
+2. Que QA conteste el commit de esa corrida.
+3. Qué cambia el PR: si toca configuración, la base o el esquema, lo miro con tiempo.
+4. Que no haya otra corrida más vieja esperando: si la hay, la rechazo primero.
+
+**Lo que mi aprobador no puede ver:** cómo se comporta la versión con tráfico real (no hay
+métricas ni logs centralizados hasta el TP9) y si lo que corre es la imagen verificada.
+
+**El rechazo:** [corrida 39066331648](https://github.com/KindGuyJ/ingsoft3-tp01/actions/runs/39066331648),
+con el motivo *«Render construye el repo devuelta, no usa la imagen del pipeline»*: lo que
+llegaría a PROD no era lo que pasó los tests.
+
+**La aprobación:** [corrida 39067760556](https://github.com/KindGuyJ/ingsoft3-tp01/actions/runs/39067760556),
+el cambio de estilo y favicon. La aprobé **aceptando** ese mismo riesgo: PROD todavía no
+tiene usuarios reales, y la diferencia se cierra en el TP7.
+
+## 6. El patrón para una producción real: blue-green
+
+Hoy es *recreate* con el zero-downtime de Render, que sigue sirviendo la versión anterior
+hasta que la nueva pasa el health check.
+
+Con usuarios reales usaría **blue-green**: el rollback es instantáneo (volver el router al
+entorno que sigue levantado), y el costo de duplicar es chico en una app de un backend y un
+front. **No canary:** necesita métricas por versión y un balanceador que reparta por
+porcentaje, y no tengo ninguna de las dos; con el tráfico de una tienda chica, además, el
+10% son pocos pedidos y la señal sería ruido. **No rolling:** con una instancia no hay
+tandas.
+
+La condición que impone: blue y green comparten la base, así que el esquema tiene que ser
+compatible con las dos versiones a la vez (agregar columnas sí; renombrar o borrar, en dos
+deploys). Le sumaría **feature flags** para separar deploy de release en cambios de
+producto, como un medio de pago nuevo.
+
+## 7. El rollback
+
+1. Busco el último deploy bueno en *Deployments → production*.
+2. Disparo los dos hooks de PROD con ese SHA (`&ref=<sha-anterior>`): como el deploy es por
+   commit explícito, volver es lo mismo que ir.
+3. Espero que Render lo marque *live* en los dos servicios y compruebo `/healthz`.
+4. Recién entonces investigo, con PROD estable.
+
+**Lo medí una vez, de `540790d` a `1b1c000`: 61 segundos.** Disparé los dos hooks a las
+18:08:10 y a las 18:09:11 `/healthz` de PROD dejó de contestar `540790d` (la versión vieja
+no informa commit). El registro queda en *Render → Deploys* de los dos servicios de PROD.
+Fue rápido porque Render ya había construido ese commit y reutilizó capas; con un build
+desde cero serían los 2 a 5 minutos de cada build.
+
+**Lo que aprendí haciéndolo:** después del rollback, *Deployments → production* seguía
+diciendo `540790d`. El rollback por hook pasa por fuera del pipeline y GitHub no se entera.
+A la pregunta «¿qué está corriendo en PROD?» contesta `/healthz`, no el historial de
+GitHub.
+
+**Lo que el rollback no deshace:** los datos. Pedidos escritos, stock movido o una columna
+borrada por una migración no vuelven con el código. Para eso haría falta un backup o un
+punto de restauración de la base, y migraciones reversibles.
+
+## 8. La letra chica del plan gratuito
+
+- **Render:** duerme tras ~15 min sin tráfico y despertar tarda hasta ~1 min (por eso el
+  smoke reintenta); 750 h/mes por **workspace**, no por servicio; 500 minutos de build por
+  mes, y cada promoción son hasta cuatro builds.
+- **Neon:** suspende el cómputo a los ~5 min sin uso y limita a 0,5 GB.
+- **Región:** Neon en São Paulo y Render en Virginia, porque Render no tiene región en
+  Sudamérica: ~120 ms por consulta.
+- **Las imágenes subidas se pierden en cada deploy:** el plan gratuito no tiene disco. Lo
+  acepto: las fotos que importan son las del seed, que viajan en la imagen del front, y la
+  interfaz `AlmacenImagenes` permite cambiar el destino sin tocar las reglas.
+
+## 9. Problemas que encontré y cómo los resolví
+
+**La primera publicación fue rechazada con `write_package`.** Los paquetes del TP2 se
+habían subido a mano y no estaban vinculados al repo. `packages: write` habilita al token,
+pero el paquete también tiene que autorizar al repo: lo resolví en *Manage Actions access*
+y re-corrí la misma corrida, sin commit nuevo. Agregué el label
+`org.opencontainers.image.source` a los Dockerfiles para que queden vinculados.
+
+**La cadena de conexión de Neon pegada en `DB_HOST` filtró la contraseña.** El driver
+falló con un error que no decía qué estaba mal, y GORM lo imprimió con la cadena completa
+en los logs de Render. Roté la contraseña y agregué una validación en `config/` que corta
+antes de conectarse, con un mensaje que nunca repite el valor
+([PR #25](https://github.com/KindGuyJ/ingsoft3-tp01/pull/25)); el test comprueba que la
+contraseña no aparezca en el error.
+
+**El front de PROD apuntaba a la api de otra persona.** `tienda-api-prod` ya existía en
+Render; el mío quedó como `tienda-api-prod-39qz`. Lo encontró el smoke (sección 4).
+
+## 10. Declaración de uso de IA
+
+Usé un asistente de IA (Claude Code) para la migración a Postgres, los cambios del
+`ci.yml` (publicar la imagen y los jobs de deploy), la plantilla de nginx, el script del
+smoke, la validación de `DB_HOST` y el estilo nuevo del front.
+
+**Las decisiones las tomé yo:** cambiar de base en vez de buscar otro proveedor de MySQL,
+qué queda por variable y qué adentro de la imagen, Continuous Delivery con PROD detrás de
+mi aprobación, qué rechazar y qué aprobar, y aceptar la pérdida de las imágenes subidas.
+
+**Cómo lo verifiqué:**
+
+- La migración: stack desde cero con Postgres, `smoke-test.sh` 48/48 y los índices únicos
+  presentes en la base.
+- La plantilla: la misma imagen con y sin variables, y el proxy contra un host https real.
+- El pipeline: `actionlint` y `shellcheck`; el orden de los pasos leído en la corrida de
+  `main`; las imágenes bajadas sin credenciales.
+- El smoke: contra los entornos reales antes de usarlo (QA en verde, PROD en rojo por el
+  `BACKEND_URL`), y con un commit que coincide y otro que no.
+- La validación de `DB_HOST`: un test que comprueba que la contraseña no aparece, y un
+  mutante sin la validación que lo hace fallar.
+- La separación de bases, con el producto `SOY PROD`.
