@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -85,7 +86,26 @@ func Cargar() (*Config, error) {
 	if c.JWTSecret == "" {
 		return nil, fmt.Errorf("JWT_SECRET es obligatorio y esta vacio (revisa tu .env)")
 	}
+	if err := validarHost(c.DBHost); err != nil {
+		return nil, err
+	}
 	return c, nil
+}
+
+// validarHost rechaza un DB_HOST que no es solo un host: el error tipico es
+// pegar ahi la cadena de conexion entera que da Neon (postgresql://user:pass@...).
+//
+// Se corta ACA, antes de gorm.Open, por dos motivos: el error que da el driver
+// no dice que esta mal (habla de un "%2F" que nadie escribio), y GORM lo
+// imprime con la cadena completa, contrasena incluida, en los logs del entorno.
+// Por eso el mensaje de este error NUNCA repite el valor recibido.
+func validarHost(host string) error {
+	if strings.Contains(host, "://") || strings.ContainsAny(host, "@/?") {
+		return fmt.Errorf("DB_HOST tiene que ser solo el host (ej: ep-xxx.aws.neon.tech), " +
+			"no la cadena de conexion: usuario, contrasena, base y sslmode van en " +
+			"DB_USER, DB_PASS, DB_SCHEMA y DB_SSLMODE")
+	}
+	return nil
 }
 
 // DSN arma la cadena de conexion de Postgres, en formato URL.
