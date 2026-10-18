@@ -14,12 +14,12 @@
 #   4. front /api/productos  el front llega a SU api: prueba el BACKEND_URL de
 #                            la plantilla de nginx
 #
-# Y si viene COMMIT_ESPERADO, una quinta: que /healthz informe ESE commit.
-# Sin esto, el smoke podia dar verde contra la version VIEJA: Render la sigue
-# sirviendo mientras construye la nueva (y si el build falla). Con esto, el
-# verde llega recien cuando contesta lo que se acaba de desplegar.
-#
-# Lo que todavia NO prueba: la version del front. Solo la api informa su commit.
+# Y si viene COMMIT_ESPERADO, que los DOS servicios sean la imagen de ese
+# commit: la api lo informa en /healthz y el front en /version.txt (los dos lo
+# traen horneado desde el build: ARG COMMIT en cada Dockerfile). Sin esto, el
+# smoke podia dar verde contra la version VIEJA: Render la sigue sirviendo
+# mientras levanta la nueva (y si el deploy falla). Con esto, el verde llega
+# recien cuando contesta lo que se acaba de desplegar.
 
 set -u
 
@@ -27,16 +27,18 @@ set -u
 : "${URL_FRONT:?falta URL_FRONT}"
 COMMIT_ESPERADO="${COMMIT_ESPERADO:-}"
 
-# 30 vueltas x 20 s = 10 minutos: el build de Render (2 a 5 min por servicio)
-# mas el cold start del plan gratuito (hasta ~1 min). Un curl seco daria rojos
-# falsos.
+# 30 vueltas x 20 s = 10 minutos: bajar la imagen y levantarla (desde el TP7
+# Render ya no construye) mas el cold start del plan gratuito (hasta ~1 min).
+# Un curl seco daria rojos falsos.
 INTENTOS=30
 ESPERA=20
 
-# ¿/healthz informa el commit esperado? Si no se pidio ninguno, no se compara.
+# ¿La api y el front son la imagen del commit esperado? Si no se pidio
+# ninguno, no se compara.
 commit_ok() {
   [ -z "$COMMIT_ESPERADO" ] && return 0
-  curl -fsS --max-time 10 "$URL_API/healthz" | grep -q "\"commit\":\"$COMMIT_ESPERADO\""
+  curl -fsS --max-time 10 "$URL_API/healthz" | grep -q "\"commit\":\"$COMMIT_ESPERADO\"" \
+    && [ "$(curl -fsS --max-time 10 "$URL_FRONT/version.txt")" = "$COMMIT_ESPERADO" ]
 }
 
 for i in $(seq 1 "$INTENTOS"); do
@@ -48,13 +50,16 @@ for i in $(seq 1 "$INTENTOS"); do
      && curl -fsS --max-time 10 "$URL_FRONT/" > /dev/null \
      && curl -fsS --max-time 10 "$URL_FRONT/api/productos" > /dev/null \
      && commit_ok; then
-    echo "✅ El entorno responde (api + base + front + front→api${COMMIT_ESPERADO:+ + commit $COMMIT_ESPERADO}), intento $i"
+    echo "✅ El entorno responde (api + base + front + front→api${COMMIT_ESPERADO:+ + api y front en $COMMIT_ESPERADO}), intento $i"
     exit 0
   fi
   echo "… intento $i/$INTENTOS sin respuesta completa, espero ${ESPERA}s"
-  # Mientras Render construye, esto muestra el commit VIEJO contestando.
+  # Mientras Render levanta la imagen nueva, esto muestra la VIEJA contestando.
   if [ -n "$COMMIT_ESPERADO" ]; then
-    echo "  /healthz contesta: $(curl -fsS --max-time 10 "$URL_API/healthz" 2>&1 || true)"
+    echo "  api /healthz contesta:     $(curl -fsS --max-time 10 "$URL_API/healthz" 2>&1 || true)"
+    # head -c: un front viejo no tiene version.txt, y nginx contesta el
+    # index.html de la SPA (try_files); alcanza con ver que no es un commit.
+    echo "  front /version.txt contesta: $(curl -fsS --max-time 10 "$URL_FRONT/version.txt" 2>&1 | head -c 60 || true)"
   fi
   sleep "$ESPERA"
 done
