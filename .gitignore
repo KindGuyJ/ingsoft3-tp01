@@ -33,3 +33,7 @@ app/frontend/dist/
 # En el pipeline viajan como artefacto de la corrida.
 app/frontend/coverage/
 app/backend/cobertura/
+
+# Reportes de Playwright (TP7): mismo criterio, viajan como artefacto.
+app/frontend/playwright-report/
+app/frontend/test-results/

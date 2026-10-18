@@ -211,7 +211,10 @@ function FormularioNuevo({ onCrear }) {
   }
 
   return (
-    <form className="tarjeta-admin" onSubmit={enviar} noValidate>
+    // aria-label: le da nombre accesible al formulario (rol "form"). En el panel
+    // hay un campo "Color" y uno "Stock" por cada producto; con nombre, un lector
+    // de pantalla —y la e2e— distinguen los del alta de los de cada fila.
+    <form className="tarjeta-admin" onSubmit={enviar} noValidate aria-label="Nuevo producto">
       <h2>Nuevo producto</h2>
 
       <div className="fila">
