@@ -183,7 +183,7 @@ function FormularioNuevo({ onCrear }) {
   async function enviar(e) {
     e.preventDefault()
     const ok = await onCrear({
-      nombre: datos.nombre,
+      titulo: datos.nombre,
       descripcion: datos.descripcion,
       precio,
       categoria: datos.categoria,
