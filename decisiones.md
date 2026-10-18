@@ -1,3 +1,20 @@
+# Enlaces del TP7
+
+Arriba de todo porque lo pide el enunciado; las decisiones del TP7 están al final, en su
+sección, como las de cada TP.
+
+| | |
+|---|---|
+| Paquetes (públicos) | [tienda-backend](https://github.com/users/KindGuyJ/packages/container/package/tienda-backend) · [tienda-frontend](https://github.com/users/KindGuyJ/packages/container/package/tienda-frontend) — etiquetas `sha-<commit>` |
+| Commit que rompió la app | [`0aa5a19`](https://github.com/KindGuyJ/ingsoft3-tp01/commit/0aa5a19c15c5790f55959cfedae355bbfd1fd2ca) ([PR #33](https://github.com/KindGuyJ/ingsoft3-tp01/pull/33)) |
+| Corrida con integración VERDE y e2e ROJA | [39086407487](https://github.com/KindGuyJ/ingsoft3-tp01/actions/runs/39086407487) — artefactos `playwright-report-integracion` (verde) y `playwright-report-e2e` (rojo), al pie de la corrida |
+| Corrida completa en verde hasta PROD | [39087063076](https://github.com/KindGuyJ/ingsoft3-tp01/actions/runs/39087063076) (el arreglo, [PR #34](https://github.com/KindGuyJ/ingsoft3-tp01/pull/34)) |
+| Release | [`v7.0.0`](https://github.com/KindGuyJ/ingsoft3-tp01/releases/tag/v7.0.0) → `3b5697b`, el commit en PROD |
+| QA | [front](https://tienda-front-qa.onrender.com) · [api](https://tienda-api-qa.onrender.com/healthz) |
+| PROD | [front](https://tienda-front-prod.onrender.com) · [api](https://tienda-api-prod-39qz.onrender.com/healthz) |
+
+---
+
 # Decisiones — TP1
 
 ## 1. Por qué Git no pudo resolver el conflicto solo
@@ -1256,3 +1273,151 @@ mi aprobación, qué rechazar y qué aprobar, y aceptar la pérdida de las imág
 - La validación de `DB_HOST`: un test que comprueba que la contraseña no aparece, y un
   mutante sin la validación que lo hace fallar.
 - La separación de bases, con el producto `SOY PROD`.
+
+---
+
+# Decisiones — TP7
+
+> Los enlaces están arriba de todo, en «Enlaces del TP7». Los *Events* de Render no se
+> pueden linkear: los muestro en vivo.
+
+## 1. Build once, deploy many
+
+En el TP6 Render **reconstruía** cada commit desde el repo. Promovía el commit verificado,
+pero lo que corría era otra construcción: si `alpine:3.20` o `nginx:1.27-alpine` se
+actualizaban entre el build de QA y el de PROD, eran dos binarios distintos del mismo
+código, y PROD corría algo que nadie probó.
+
+Ahora los cuatro servicios son *Existing Image* y el pipeline le dice a cada hook **qué
+imagen** ejecutar: `imgURL=ghcr.io/kindguyj/tienda-…:sha-<commit>`. Se construye una vez
+y QA y PROD ejecutan los mismos bytes. En el log, `deploy-qa` y `deploy-prod` muestran el
+mismo `imgURL`. A los servicios les cambié la fuente en lugar de crear otros nuevos, para
+conservar sus URLs, sus variables y sus hooks.
+
+## 2. Etiquetas: `sha-<commit>` y `v7.0.0`
+
+- **`sha-<commit>`** (registry) nombra una imagen y dice de qué commit salió. Es la que se
+  promueve. Es mutable (volver a correr una corrida la republica), por eso no se re-corre
+  una corrida vieja para desplegar. Lo inmutable es el digest.
+- **`v7.0.0`** (git) nombra el commit que estuvo en PROD. Va sobre el que dice
+  *Deployments → production* (`3b5697b`), no sobre el último de `main`. Este documento,
+  por ejemplo, entra después y no estuvo en PROD cuando se puso el tag.
+- **Sin `latest`:** no dice qué hay detrás, y un deploy que lo usara ejecutaría lo último
+  que se publicó, haya pasado las pruebas o no.
+- **De la release a la imagen:** `git rev-list -n1 v7.0.0` da el commit, y
+  `sha-<ese commit>` está en los dos paquetes. Volver a esa versión es mandarle esa imagen
+  al hook.
+- **La imagen configurada en Render no es la que corre.** Cada servicio quedó configurado
+  con `sha-2ec7cf6…`, el último merge antes del cambio, porque Render pide una imagen para
+  cambiar la fuente. Lo que corre lo nombra cada deploy. Por eso *Manual Deploy* está
+  prohibido: desplegaría esa imagen vieja, en verde y sin avisar.
+
+## 3. Cómo se comprueba desde afuera qué está corriendo
+
+El commit va **horneado en las dos imágenes** (`ARG COMMIT` en cada Dockerfile y
+`build-args` en el pipeline). La api lo devuelve en `/healthz` y el front en
+`/version.txt`. El smoke exige que **los dos** contesten el commit de la corrida, así que
+un deploy que no ocurrió deja la corrida en rojo.
+
+No fue opcional. El smoke del TP6 leía `RENDER_GIT_COMMIT`, y un servicio que ejecuta una
+imagen no construye nada, así que esa variable deja de existir. Sin hornear el commit, el
+smoke quedaba en rojo para siempre. De paso se cerró lo que el TP6 dejó pendiente: la
+versión del front tampoco se comprobaba.
+
+**Lo que el smoke no prueba:** que la app *funcione*. Responde con la api, la base y el
+front vivos aunque un botón esté roto. Eso lo prueban las suites.
+
+## 4. Las dos suites
+
+Las dos usan Playwright, en `app/frontend/e2e/`. Cada prueba **crea su propio producto**
+con un nombre que no se repite (hora + sufijo al azar), lo usa y lo da de baja en
+`afterEach`, que corre aunque la prueba falle. Nunca tocan el catálogo del seed: QA es uno
+solo. La baja es lógica (`activo = false`), porque los pedidos referencian los productos.
+Entran como el admin de QA, con credenciales en secrets del environment `qa`.
+
+| | Integración (`api.spec.js`, sin navegador → api de QA) | e2e (`tienda.spec.js`, Chromium → front de QA) |
+|---|---|---|
+| 1 | alta → está en la base y en el catálogo → baja → 404 | alta en el panel → aparece en el catálogo → «Dar de baja» → ya no está |
+| 2 | precio 0 → `400` y el nombre no aparece ni entre los inactivos | variante repetida → el panel muestra el 409 del backend → no se creó |
+| 3 | **compra:** stock 3 − 2 = 1 en la base → cancelar → 3 | **compra:** talle → carrito → confirmar → Mis pedidos → cancelar → vuelve el stock |
+
+**La tercera de cada una es la compra:** es lo que la tienda hace todos los días, y si se
+rompe no vende. En la prueba del precio 0 no cuento productos como la guía, porque la
+cuenta depende de lo que otra corrida haga en QA; busco el nombre único.
+
+**Qué no puse (pirámide):** en e2e, las cuentas del carrito, los talles sin stock y la
+validación del email, que ya cubren los unitarios del TP5 en milisegundos. En integración,
+las cuotas y las transiciones de estado, que no dependen de la base.
+
+**Selectores por rol y label.** El formulario de alta no tenía nombre accesible, y sus
+campos «Color» y «Stock» se repiten en cada fila del panel: le agregué
+`aria-label="Nuevo producto"`.
+
+## 5. Integración y e2e no son lo mismo: el par que diagnostica
+
+La integración le habla a la api directo y prueba lo que la base acepta, rechaza y guarda.
+Un unitario no lo ve, porque el fake no tiene columnas. Lo comprobé con un mutante de una
+línea en el repositorio GORM (`Update("stock", …)` → `Update("stok", …)`): compila, los
+unitarios pasan y la integración de la compra da `500`.
+
+**La corrida roja** ([39086407487](https://github.com/KindGuyJ/ingsoft3-tp01/actions/runs/39086407487)):
+el alta del panel pasó a mandar `titulo` en vez de `nombre`. El smoke dio verde, la
+integración **3 passed** y la e2e **2 failed**, con `'Nombre' … required` en la captura y
+`titulo` en la traza. `deploy-prod` no llegó a pedir aprobación. Integración verde con e2e
+roja quiere decir que la api y la base están sanas y que el que usa mal la api es el
+front. Si hubiera roto la api, la integración habría dado rojo y la e2e ni habría corrido.
+
+**Integración amplia, no estrecha.** Corre contra la api ya desplegada en QA. Gana: prueba
+también el despliegue, sin levantar un Postgres en el job. Pierde: llega recién después
+del deploy y comparte QA con otras corridas.
+
+**Lo que el gate no ataja:** lo que no recorren los flujos (subir imágenes, filtrar por
+categoría) y lo que solo pasa con tráfico o datos de PROD.
+
+## 6. Cold start y tests flaky
+
+60 s por test, 15 s por aserción y un reintento, sin sleeps: Playwright espera solo, y
+para afirmar que algo *no* está espero primero a que termine el «Cargando…». Además, el
+smoke ya despertó QA. Un test *flaky* es el que a veces pasa y a veces no. Es peor que no
+tener test porque entrena a ignorar el rojo. Si un test pasa recién en el reintento, el
+reporte lo marca, aunque la corrida quede verde.
+
+## 7. La misma imagen del front en QA y PROD
+
+Van por variable de cada servicio `BACKEND_URL` y `DNS_RESOLVER`. Adentro de la imagen
+quedan el build de Vite, las fotos del seed, la estructura de nginx y el commit. La imagen
+es pública, así que no lleva secretos.
+
+## 8. Límite conocido: QA es uno solo
+
+Con dos merges seguidos, la corrida B puede redesplegar QA mientras las suites de A
+corren. Lo reconocería por `/healthz` de QA contestando el commit de B, o por la hora del
+`deploy-qa` de B. En ese caso rechazo A con motivo y no re-corro sus pruebas, porque
+probarían la imagen de B. La regla es un merge por vez. Un equipo real usaría un entorno
+efímero por corrida.
+
+## 9. Problemas que encontré y cómo los resolví
+
+- **`RENDER_GIT_COMMIT` desapareció** con las imágenes. Lo resolví horneando el commit
+  (sección 3).
+- **El admin de QA y PROD tenía la contraseña por defecto del seed**, que está escrita en
+  este repo público. Cuando fui a usarla en los secrets, la cambié en las dos bases.
+  La anterior contesta `401` en los dos entornos.
+- **Bug encontrado, no arreglado:** un color de más de 40 caracteres pasa el service, la
+  base lo rechaza (`size:40`) y la api contesta `500`. Como el alta no es transaccional,
+  el producto queda creado sin variantes. Es otro caso que solo ve una prueba contra la
+  base de verdad.
+
+## 10. Declaración de uso de IA
+
+Usé un asistente de IA (Claude Code) para los cambios del pipeline (`imgURL`,
+`build-args`, los jobs de prueba), el commit horneado en las imágenes, el smoke y las dos
+suites de Playwright.
+
+**Las decisiones las tomé yo:** qué flujos probar, entrar como admin con secrets de `qa`,
+la baja lógica como limpieza, qué romper para la evidencia y qué aprobar.
+
+**Cómo lo verifiqué:** las imágenes construidas con y sin `COMMIT`; el smoke con el
+commit correcto, con otro y contra un front viejo; `actionlint`; las seis pruebas contra
+el compose; dos mutantes (front y repositorio) para ver que cada suite se pone roja con lo
+que le toca; y las corridas reales enlazadas arriba.
