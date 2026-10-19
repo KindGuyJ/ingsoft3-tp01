@@ -3,7 +3,10 @@ package main
 import (
 	"log"
 	"net/http"
+	"time"
 
+	"github.com/getsentry/sentry-go"
+	sentrygin "github.com/getsentry/sentry-go/gin"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -73,7 +76,26 @@ func main() {
 	pedidosCtl := controllers.NuevoPedidosController(pedidosSvc)
 	imagenesCtl := controllers.NuevoImagenesController(imagenesSvc)
 
+	// TP9: Sentry cuenta que falla, que tarda y que se usa. Sin DSN queda
+	// apagado y todo lo demas sigue igual.
+	if cfg.SentryDSN != "" {
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn:              cfg.SentryDSN,
+			Environment:      cfg.SentryEntorno,
+			Release:          cfg.Commit, // cada error queda atado a la imagen que lo produjo
+			EnableTracing:    true,
+			TracesSampleRate: 1.0, // medir todos los pedidos: con este trafico sobra cuota
+		}); err != nil {
+			log.Printf("sentry no arranco (la app sigue): %v", err)
+		}
+		// Lo que quede en el buffer se manda antes de salir.
+		defer sentry.Flush(2 * time.Second)
+	}
+
 	r := gin.Default()
+	// Va primero para medir cada pedido entero y capturar los panics: Repanic
+	// los devuelve al Recovery de gin.Default, que sigue contestando 500.
+	r.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
 
 	// Cuanto de un multipart se buferea en memoria antes de spoolear a disco.
 	// No es el limite de subida (ese es cfg.MaxImagenBytes, y lo aplica el
