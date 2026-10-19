@@ -1421,3 +1421,92 @@ la baja lógica como limpieza, qué romper para la evidencia y qué aprobar.
 commit correcto, con otro y contra un front viejo; `actionlint`; las seis pruebas contra
 el compose; dos mutantes (front y repositorio) para ver que cada suite se pone roja con lo
 que le toca; y las corridas reales enlazadas arriba.
+
+---
+
+# Decisiones — TP8
+
+## 1. Riel y versiones
+
+Riel canónico: **Terraform** (1.16.6) contra las mismas cuentas de Neon y Render del TP6.
+Lo declarado es un entorno **nuevo**, `preprod`, en [`infra/`](infra/). QA y PROD se
+crearon a mano en el TP6 y este código no los toca.
+
+| Provider | Versión fijada | Para qué |
+|---|---|---|
+| `kislerdm/neon` | `0.18.0` | proyecto `tienda-preprod`, su rol y la base `tienda_preprod` |
+| `render-oss/render` | `1.9.1` | `tienda-api-preprod` y `tienda-front-preprod`, plan `free`, imagen de `v7.0.0` |
+| `hashicorp/random` | `3.7.2` | el `JWT_SECRET` de preprod |
+
+Las versiones son exactas, no rangos, y el `.terraform.lock.hcl` commiteado fija los hashes
+(Windows, Linux y Mac). El estado vive en mi máquina, fuera del repo (`*.tfstate` en el
+`.gitignore`, igual que `*.tfvars` y `*.tfplan`).
+
+**Qué se deriva y qué no:**
+
+- La conexión de la api **no es una cadena**: `config.go` la recibe por partes y rechaza un
+  `DB_HOST` que parezca URL. Por eso `DB_HOST`, `DB_USER`, `DB_PASS` y `DB_SCHEMA` salen
+  cada una de un atributo de Neon (`database_host`, el rol, su `password`, la base).
+- `BACKEND_URL` del front sale de `render_web_service.api.url`, con `trimsuffix` por la barra
+  final.
+- El `JWT_SECRET` lo genera `random_password`: no hay un secreto que tipear ni un `tfvars`
+  que cuidar. Cambia cada vez que preprod renace, y en un entorno desechable eso está bien.
+- `APP_COMMIT` **no** se declara: viene horneado en la imagen (TP7) y una variable del
+  servicio lo pisaría.
+- Las credenciales (`NEON_API_KEY`, `RENDER_API_KEY`, `RENDER_OWNER_ID`) y el
+  `TF_VAR_neon_org_id` llegan por el entorno, desde un archivo local ignorado por git.
+
+**La base nace vacía y sin seed:** las tablas las crea el `AutoMigrate` de la api al
+arrancar. Para probar que el entorno usa **su** base, no alcanza con leer el catálogo vacío:
+registré un usuario por el front (`201`), repetirlo dio `409` (email único) y el login dio
+`200`. Después del `destroy → apply`, ese mismo login da `401`, porque la base es otra.
+
+## 2. Problemas que tuve y cómo los resolví
+
+- **`org_id is required` (400 de Neon).** Mi cuenta de Neon es una organización, y el
+  provider no lo pide por defecto. El atributo existe (`org_id`), pero no hay data source
+  para leerlo: lo saqué de la API (`/users/me/organizations`) y entra como
+  `TF_VAR_neon_org_id`. No tiene default, como `RENDER_OWNER_ID`: dice de qué cuenta se
+  trata, no cómo es el entorno.
+- **`invalid ownerID` de Render.** Había puesto el id de usuario (`usr-…`) de la URL. Mi
+  cuenta es un workspace y el owner válido es `tea-…`; lo saqué de `GET /v1/owners`.
+- **Los dos `apply` fallidos quedaron a medias** (el primero había creado el
+  `random_password`; el segundo, toda la parte de Neon). El siguiente `plan` propuso solo
+  lo que faltaba (5 y después 2 recursos): el modelo declarativo retomó desde donde quedó.
+
+**Lo que medí y la guía no:** al recrear los servicios con el mismo nombre, Render devolvió
+**las mismas URLs**. Igual se leen siempre del `output`.
+
+**Lo que sigue siendo artesanal:** QA, PROD y sus deploy hooks. Preprod no está conectado
+al pipeline del TP7 (la extensión es opcional), y el provider de Render no expone el deploy
+hook.
+
+## 3. El plan en cada PR (opcional)
+
+[`.github/workflows/infra.yml`](.github/workflows/infra.yml) corre en cada PR que toca
+`infra/` (o el propio workflow: si no, el PR que lo agrega no lo dispara). Tiene dos jobs:
+`infra-check` hace `fmt -check` y `validate` **sin credenciales**, e `infra-plan` es el
+único que recibe las claves (secrets del repo; el `org_id`, que no es secreto, va como
+variable). El plan se publica como artefacto `tf-plan`.
+
+**Lo que ese plan no dice:** el estado está en mi máquina, así que el pipeline siempre ve
+«crearía 6 recursos». Sirve para saber que el código compila y qué declara, no para
+revisar un cambio incremental ni para detectar drift. Para eso, y para que el `apply` lo
+haga la corrida con una aprobación, haría falta un estado remoto con bloqueo. Contracara:
+con esas claves el job puede leer toda la cuenta, PROD incluida (la de Render no tiene
+permisos granulares).
+
+## 4. Declaración de uso de IA
+
+Usé un asistente de IA para escribir el HCL de `infra/` y el workflow del plan, y para
+ejecutar el ciclo.
+
+**Cómo lo verifiqué:** leí cada `plan` antes de aplicarlo. El entorno se comprobó como
+entorno: `/healthz` y `/version.txt` informan `3b5697b` en la api y el front, y el
+registro/login pasa por el front contra su propia base. Después:
+
+- una segunda pasada con «No changes»;
+- drift: borrar la base por fuera, el plan la detecta (`1 to add`) y el `apply` la repara;
+- una base intrusa que el plan no ve;
+- `prevent_destroy` frenando un `destroy`;
+- `destroy → apply → destroy`, con QA y PROD sin cambios.

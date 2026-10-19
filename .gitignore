@@ -37,3 +37,13 @@ app/backend/cobertura/
 # Reportes de Playwright (TP7): mismo criterio, viajan como artefacto.
 app/frontend/playwright-report/
 app/frontend/test-results/
+
+# Terraform (TP8): el estado tiene contraseñas en texto plano y vive solo en la
+# maquina del que aplica. Los tfvars son valores locales. El .terraform.lock.hcl
+# SI se commitea: fija versiones y hashes de los providers.
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+# Planes guardados (terraform plan -out): llevan valores sensibles adentro.
+*.tfplan
