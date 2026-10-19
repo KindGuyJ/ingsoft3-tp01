@@ -33,8 +33,12 @@ export default defineConfig({
         'src/App.jsx',  // solo declara las rutas
         'src/**/*.test.{js,jsx}',
       ],
-      // El umbral: medido 56 de líneas y 81 de ramas. Ver decisiones.md (TP5).
-      thresholds: { lines: 50, branches: 75 },
+      // El umbral, unos puntos debajo de lo medido (criterio del TP5).
+      // TP9: al pasar de vitest 2 a 5 la medicion cambio, no los tests: ahora
+      // es sobre el codigo real (AST) y una linea con un onClick que nunca se
+      // dispara deja de contar como cubierta. El 56/81 del TP5 estaba inflado;
+      // con los mismos 39 tests se mide 45 de lineas y 45 de ramas.
+      thresholds: { lines: 40, branches: 40 },
     },
   },
 })
