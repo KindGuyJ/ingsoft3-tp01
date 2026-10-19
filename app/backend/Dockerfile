@@ -1,5 +1,5 @@
 # ---- Etapa 1: build (imagen con toolchain de Go) ----
-FROM golang:1.24-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src
 
 # go.mod y go.sum primero: capa cacheable, solo se rehace si cambian las dependencias.
@@ -26,7 +26,7 @@ RUN go install github.com/rillig/gobco@v1.3.4
 ENTRYPOINT ["sh", "./cobertura.sh"]
 
 # ---- Etapa 3: runtime (imagen minima, sin toolchain) ----
-FROM alpine:3.20 AS final
+FROM alpine:3.24 AS final
 # Asocia el paquete de ghcr.io con el repo (y le da permiso al pipeline de publicarlo).
 LABEL org.opencontainers.image.source=https://github.com/KindGuyJ/ingsoft3-tp01
 RUN adduser -D -u 10001 app
