@@ -1,0 +1,24 @@
+# TP9: las dependencias son la mayor parte del codigo que corre. Dependabot
+# abre cada semana los PRs de actualizacion, y el pipeline completo (tests,
+# cobertura, imagen, integracion y e2e contra QA) decide si se pueden mergear.
+version: 2
+updates:
+  - package-ecosystem: "gomod"          # backend
+    directory: "/app/backend"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "npm"            # frontend
+    directory: "/app/frontend"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "github-actions" # las actions del pipeline tambien son dependencias
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"         # y las imagenes base de los Dockerfile
+    directories: ["/app/backend", "/app/frontend"]
+    schedule:
+      interval: "weekly"

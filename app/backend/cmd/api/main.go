@@ -85,9 +85,15 @@ func main() {
 	// TP6: ademas informa el commit, para que el smoke compruebe que contesta
 	// la version recien desplegada (Render sigue sirviendo la anterior mientras
 	// construye).
-	r.GET("/healthz", func(c *gin.Context) {
+	// TP9: tambien HEAD. El monitor externo gratuito (UptimeRobot) pregunta con
+	// HEAD, y Gin no lo deriva del GET: sin esta ruta contestaba 404 y el
+	// monitor marcaba PROD caida estando viva. HEAD no lleva cuerpo; Gin lo
+	// descarta solo.
+	salud := func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "commit": cfg.Commit})
-	})
+	}
+	r.GET("/healthz", salud)
+	r.HEAD("/healthz", salud)
 
 	// Archivos subidos por el admin. Se sirven desde el volumen montado.
 	// Recordar: nginx tiene que proxear /uploads/ ademas de /api/.
