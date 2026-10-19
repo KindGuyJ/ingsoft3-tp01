@@ -1481,9 +1481,25 @@ registré un usuario por el front (`201`), repetirlo dio `409` (email único) y 
 al pipeline del TP7 (la extensión es opcional), y el provider de Render no expone el deploy
 hook.
 
-## 3. Declaración de uso de IA
+## 3. El plan en cada PR (opcional)
 
-Usé un asistente de IA para escribir el HCL de `infra/` y para ejecutar el ciclo.
+[`.github/workflows/infra.yml`](.github/workflows/infra.yml) corre en cada PR que toca
+`infra/` (o el propio workflow: si no, el PR que lo agrega no lo dispara). Tiene dos jobs:
+`infra-check` hace `fmt -check` y `validate` **sin credenciales**, e `infra-plan` es el
+único que recibe las claves (secrets del repo; el `org_id`, que no es secreto, va como
+variable). El plan se publica como artefacto `tf-plan`.
+
+**Lo que ese plan no dice:** el estado está en mi máquina, así que el pipeline siempre ve
+«crearía 6 recursos». Sirve para saber que el código compila y qué declara, no para
+revisar un cambio incremental ni para detectar drift. Para eso, y para que el `apply` lo
+haga la corrida con una aprobación, haría falta un estado remoto con bloqueo. Contracara:
+con esas claves el job puede leer toda la cuenta, PROD incluida (la de Render no tiene
+permisos granulares).
+
+## 4. Declaración de uso de IA
+
+Usé un asistente de IA para escribir el HCL de `infra/` y el workflow del plan, y para
+ejecutar el ciclo.
 
 **Cómo lo verifiqué:** leí cada `plan` antes de aplicarlo. El entorno se comprobó como
 entorno: `/healthz` y `/version.txt` informan `3b5697b` en la api y el front, y el

@@ -1,0 +1,60 @@
+name: Infra
+
+# TP8 (opcional, guia §3.6): en cada PR que toca infra/ se verifica el codigo y
+# se publica el plan como artefacto, para leerlo antes de aprobar.
+# El apply NO esta aca: lo hago yo desde mi terminal, porque el estado vive en
+# mi maquina. Por eso este plan no compara contra lo que existe: dice "esto
+# crearia si no hubiera nada". Sirve para ver que compila y que declara; no
+# para revisar un cambio incremental ni detectar drift (eso pide estado remoto).
+
+on:
+  pull_request:
+    # El propio workflow tambien: si no, el PR que lo agrega no lo dispara.
+    paths: ["infra/**", ".github/workflows/infra.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Analisis del archivo: no habla con nadie, asi que no lleva credenciales.
+  infra-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.16.6
+      - name: Formato
+        run: terraform -chdir=infra fmt -check
+      - name: Init (sin backend) + validate
+        run: |
+          terraform -chdir=infra init -backend=false
+          terraform -chdir=infra validate
+
+  # El plan si habla con Neon y Render: las claves solo viven en este job.
+  infra-plan:
+    runs-on: ubuntu-latest
+    needs: infra-check
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      RENDER_OWNER_ID: ${{ secrets.RENDER_OWNER_ID }}
+      # No es secreto (dice de que cuenta), por eso es una variable del repo.
+      TF_VAR_neon_org_id: ${{ vars.NEON_ORG_ID }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.16.6
+          terraform_wrapper: false
+      - name: Plan
+        run: |
+          terraform -chdir=infra init -input=false
+          set -o pipefail
+          terraform -chdir=infra plan -input=false -no-color | tee plan.txt
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: tf-plan
+          path: plan.txt
