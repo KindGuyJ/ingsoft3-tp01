@@ -23,6 +23,13 @@ type Config struct {
 	// RENDER_GIT_COMMIT. Vacio en compose: ahi no hace falta.
 	Commit string
 
+	// TP9: adonde manda errores y tiempos la libreria de Sentry. Vacio = Sentry
+	// apagado (compose, tests, QA): la app anda igual. Solo PROD lo define, como
+	// variable del servicio en Render: no va en el codigo ni en la imagen.
+	SentryDSN string
+	// Con que nombre aparecen los eventos en Sentry (produccion, qa...).
+	SentryEntorno string
+
 	DBHost   string
 	DBPort   string
 	DBUser   string
@@ -53,16 +60,18 @@ type Config struct {
 
 func Cargar() (*Config, error) {
 	c := &Config{
-		Puerto:     get("PORT", "8080"),
-		Commit:     get("APP_COMMIT", ""),
-		DBHost:     get("DB_HOST", "localhost"),
-		DBPort:     get("DB_PORT", "5432"),
-		DBUser:     get("DB_USER", "tienda"),
-		DBPass:     get("DB_PASS", ""),
-		DBSchema:   get("DB_SCHEMA", "tienda"),
-		DBSSLMode:  get("DB_SSLMODE", "disable"),
-		JWTSecret:  get("JWT_SECRET", ""),
-		UploadsDir: get("UPLOADS_DIR", "/app/uploads"),
+		Puerto:        get("PORT", "8080"),
+		Commit:        get("APP_COMMIT", ""),
+		SentryDSN:     get("SENTRY_DSN", ""),
+		SentryEntorno: get("SENTRY_ENVIRONMENT", "produccion"),
+		DBHost:        get("DB_HOST", "localhost"),
+		DBPort:        get("DB_PORT", "5432"),
+		DBUser:        get("DB_USER", "tienda"),
+		DBPass:        get("DB_PASS", ""),
+		DBSchema:      get("DB_SCHEMA", "tienda"),
+		DBSSLMode:     get("DB_SSLMODE", "disable"),
+		JWTSecret:     get("JWT_SECRET", ""),
+		UploadsDir:    get("UPLOADS_DIR", "/app/uploads"),
 	}
 
 	horas, err := getFloat("JWT_HORAS", 24)
