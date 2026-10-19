@@ -17,7 +17,7 @@ FROM build AS test
 ENTRYPOINT ["npm", "run", "test:ci"]
 
 # ---- Etapa 3: nginx sirve los estáticos (queda ULTIMA: es la imagen final) ----
-FROM nginx:1.27-alpine AS final
+FROM nginx:1.31-alpine AS final
 # Asocia el paquete de ghcr.io con el repo (y le da permiso al pipeline de publicarlo).
 LABEL org.opencontainers.image.source=https://github.com/KindGuyJ/ingsoft3-tp01
 # En templates/ y no en conf.d/: nginx leeria conf.d/ tal cual, con los ${...}
