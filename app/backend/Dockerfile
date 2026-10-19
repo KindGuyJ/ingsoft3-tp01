@@ -1,5 +1,5 @@
 # ---- Etapa 1: build (imagen con toolchain de Go) ----
-FROM golang:1.24-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src
 
 # go.mod y go.sum primero: capa cacheable, solo se rehace si cambian las dependencias.
