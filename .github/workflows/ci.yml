@@ -21,7 +21,7 @@ jobs:
           RAMA: ${{ github.head_ref || github.ref_name }}
         run: echo "Rama $RAMA · commit $GITHUB_SHA"
       - name: Bajar el código al runner
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Preparar el constructor que sabe cachear
         uses: docker/setup-buildx-action@v4
 
@@ -111,7 +111,7 @@ jobs:
           RAMA: ${{ github.head_ref || github.ref_name }}
         run: echo "Rama $RAMA · commit $GITHUB_SHA"
       - name: Bajar el código al runner
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Preparar el constructor que sabe cachear
         uses: docker/setup-buildx-action@v4
 
@@ -200,7 +200,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Bajar el código al runner (para el script del smoke)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # 🔴 El sha de ESTA corrida, no la punta de main: con dos merges seguidos,
       # la corrida de A no puede desplegar B, que todavia no paso por nada.
@@ -245,7 +245,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Bajar el código al runner
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Preparar Node
         uses: actions/setup-node@v6
         with:
@@ -277,7 +277,7 @@ jobs:
     timeout-minutes: 20                      # si algo se cuelga, el job muere en vez de esperar horas
     steps:
       - name: Bajar el código al runner
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Preparar Node
         uses: actions/setup-node@v6
         with:
@@ -322,7 +322,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Bajar el código al runner (para el script del smoke)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # 🔴 Aca mas que en ningun lado: entre que la corrida queda esperando y
       # que alguien aprueba pueden pasar horas, y main se mueve. Por eso la
