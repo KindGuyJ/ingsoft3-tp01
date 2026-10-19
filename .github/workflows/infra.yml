@@ -21,7 +21,7 @@ jobs:
   infra-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.16.6
@@ -43,7 +43,7 @@ jobs:
       # No es secreto (dice de que cuenta), por eso es una variable del repo.
       TF_VAR_neon_org_id: ${{ vars.NEON_ORG_ID }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.16.6
