@@ -45,3 +45,5 @@ app/frontend/test-results/
 *.tfstate.*
 .terraform/
 *.tfvars
+# Planes guardados (terraform plan -out): llevan valores sensibles adentro.
+*.tfplan

@@ -2,8 +2,9 @@
 # QA y PROD se crearon a mano en el TP6 y este codigo NO los toca: no aparecen
 # en ningun plan porque no estan declarados.
 #
-# Uso (desde infra/, con NEON_API_KEY, RENDER_API_KEY y RENDER_OWNER_ID
-# exportadas):  terraform init && terraform plan && terraform apply
+# Uso (desde infra/, con NEON_API_KEY, RENDER_API_KEY, RENDER_OWNER_ID y
+# TF_VAR_neon_org_id exportadas; ninguna va en un archivo versionado):
+#   terraform init && terraform plan && terraform apply
 # Y al terminar la sesion: terraform destroy (las 750 h de Render son del
 # workspace entero: si se agotan, se suspende tambien PROD).
 
@@ -37,6 +38,7 @@ provider "render" {} # RENDER_API_KEY y RENDER_OWNER_ID
 resource "neon_project" "preprod" {
   name      = "tienda-preprod"
   region_id = var.region_neon
+  org_id    = var.neon_org_id
 
   # El default del provider (86400 s) supera el tope del plan gratuito (21600):
   # sin esta linea el primer apply falla.

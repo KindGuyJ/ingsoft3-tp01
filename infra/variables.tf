@@ -29,3 +29,10 @@ variable "region_render" {
 variable "region_neon" {
   default = "aws-us-west-2"
 }
+
+# Sin default, igual que RENDER_OWNER_ID: es de QUE cuenta, no del entorno.
+# Llega por TF_VAR_neon_org_id. Neon lo exige desde que las cuentas son
+# organizaciones; sin el, crear el proyecto da 400 "org_id is required".
+variable "neon_org_id" {
+  type = string
+}
