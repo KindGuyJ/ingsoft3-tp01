@@ -13,7 +13,7 @@ import './styles/index.css'
 // El environment es el host, asi QA y PROD se separan solos sin rebuildear la
 // imagen (es la misma en los dos, TP7). En localhost no manda nada.
 Sentry.init({
-  dsn: 'PEGAR_DSN_DEL_PROYECTO_REACT',
+  dsn: 'https://202de8ad45e51fd8640cd36b515c812b@o4512284869459968.ingest.us.sentry.io/4512284917366784',
   environment: window.location.hostname,
   enabled: window.location.hostname !== 'localhost',
   integrations: [Sentry.browserTracingIntegration()],
