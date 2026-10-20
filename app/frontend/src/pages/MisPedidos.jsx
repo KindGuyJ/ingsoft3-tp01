@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router'
 import { api } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 import { Cargando, AvisoError, AvisoExito } from '../components/Aviso'

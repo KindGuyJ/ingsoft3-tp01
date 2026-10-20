@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { formatearPrecio, imagenPrincipal } from '../utils'
 
 export default function ProductoCard({ producto }) {

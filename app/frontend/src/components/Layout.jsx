@@ -1,4 +1,4 @@
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useNavigate } from 'react-router'
 import { useAuth } from '../hooks/useAuth'
 import { useCarrito } from '../hooks/useCarrito'
 
