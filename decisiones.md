@@ -1510,3 +1510,98 @@ registro/login pasa por el front contra su propia base. Después:
 - una base intrusa que el plan no ve;
 - `prevent_destroy` frenando un `destroy`;
 - `destroy → apply → destroy`, con QA y PROD sin cambios.
+
+---
+
+# Decisiones — TP9
+
+## 1. Dependabot: qué mergeé y por qué
+
+[`.github/dependabot.yml`](.github/dependabot.yml) vigila cuatro ecosistemas por semana:
+`gomod` (backend), `npm` (frontend), `github-actions` y `docker` (las imágenes base de los dos
+Dockerfile). Las alertas ya estaban prendidas desde antes, con **35 alertas abiertas** que nadie
+miraba; ahora también están prendidas las actualizaciones de seguridad.
+
+Mergeé el **#44: `golang-jwt/jwt/v5` 5.2.1 → 5.3.1**.
+
+- **Qué arregla:** GHSA-mh63-6h87-95cp (*high*). Al parsear el header de un token, la librería
+  puede reservar memoria de más.
+- **Si nos alcanza:** sí. `middleware/auth.go` llama a `ParseWithClaims` sobre el header
+  `Authorization` de cualquier pedido: alguien podría tirar la api por memoria.
+- **Por qué me animé:** sube un *minor*, y el changelog no rompe nada (la 5.3.0 solo declara
+  Go ≥ 1.21). Los tests de `middleware` firman y validan tokens, y al llegar a `main` la
+  integración y el e2e contra QA ejercitan el login real antes de la aprobación de PROD.
+
+**Y después, las 35 alertas en cero.** El #44 cerraba una. Las otras pedían algo más que un
+botón, así que fueron tres PRs propios, de a uno y cada uno por QA, integración, e2e y
+aprobación de PROD:
+
+| PR | Qué | Alertas | ¿Llegaban a PROD? |
+|---|---|---|---|
+| #63 | Go 1.24 → **1.27**; `x/crypto` 0.58, `x/net` 0.61, `pgx` 5.11; `alpine` 3.24 | 17 | sí: bcrypt de las contraseñas y el driver de la base |
+| #65 | `vite` 5 → 8, `vitest` 2 → 5, `@vitejs/plugin-react` 6 | 10 | no: herramientas de build y test (la imagen final es nginx con `dist/`) |
+| #66 | `react-router-dom` 6 → `react-router` **7.18** | 2 | sí: va en el bundle (*open redirect* en `<Link>`/`useNavigate`) |
+
+- **Go no se podía esquivar:** todos los parches de Go exigen Go ≥ 1.25, y la 1.24 ya no tenía
+  soporte (hoy se mantienen la 1.27 y la 1.26). Go garantiza compatibilidad dentro de Go 1:
+  los tests y la cobertura dieron igual.
+- **react-router se queda en la 7** a propósito: la 8 exige React 19, que es otra migración.
+
+Siguen abiertos los PRs de Dependabot que son solo versiones nuevas, sin alerta (React 19,
+Node 26, nginx 1.31, gin, gorm, las actions): se evalúan de a uno, no en el cierre de un TP.
+
+## 2. Monitor, Sentry y lo que mostraron
+
+- **Monitor:** UptimeRobot sobre `/healthz` de PROD, cada 5 minutos. Antes hubo que hacer que
+  `/healthz` aceptara `HEAD` (#37): el plan gratuito pregunta con HEAD, Gin no lo deriva del GET,
+  y PROD contestaba `404`, así que el monitor la habría marcado caída estando viva.
+- **La caída provocada** (*Suspend* en Render): DOWN a las 19:00:05 y UP a las 19:01:39
+  (1 min 34 s). Con chequeo cada 5 minutos, el aviso llega a lo sumo 5 minutos después de la
+  caída; sin monitor me habría enterado por un usuario. El monitor quedó **pausado**: despierto
+  todo el mes se come las 750 h que comparte con PROD.
+- **Sentry** (back y front, #60), con datos de producción:
+
+  | | Operación | Pedidos | p95 |
+  |---|---|---|---|
+  | Más usada | `GET /api/productos` | 8 | 802 ms |
+  | Más lenta | `POST /api/productos` | 1 | 1031 ms |
+
+  El único error es el bug del TP7: un color de más de 40 caracteres da `500` y deja el
+  producto sin variantes. Con él abrí la tarjeta
+  [#61](https://github.com/KindGuyJ/ingsoft3-tp01/issues/61) en el tablero.
+
+**Decisiones de Sentry:**
+- **Back:** el DSN llega por `SENTRY_DSN` (solo en PROD, como variable de Render); sin él
+  Sentry queda apagado. Además de los panics, `Responder` manda los errores que terminan en
+  `500`, porque en esta api los errores inesperados se devuelven, no explotan. Los 4xx no van:
+  son el negocio funcionando.
+- **Front:** el DSN va escrito en `main.jsx` porque no es secreto (solo sirve para enviar, y
+  viaja igual en el JS). El `environment` es el host, así QA y PROD se separan con la misma
+  imagen.
+- **Lo que no mira:** las consultas a la base, porque GORM no está instrumentado. El tiempo
+  de un pedido se ve entero, sin separar cuánto fue la base.
+
+## 3. Problemas y uso de IA
+
+- **`sentry-go` v0.46+ exigía Go 1.25** con las imágenes en `golang:1.24-alpine`: entró fijado
+  en v0.45.1, y con Go 1.27 (#63) pasó a la v0.50.
+- **La cobertura del front «bajó» de 56/81 a 45/45 con vitest 5 (#65), con los mismos 39
+  tests.** No bajó: cambió cómo se mide. Desde vitest 4 se mide sobre el código real, y una
+  línea con un `onClick` que ningún test dispara deja de contar como cubierta (por ejemplo
+  `SelectorCantidad.jsx:16`, el botón «−», pasó de 100 % a 66 %). El 56/81 del TP5 estaba
+  inflado. Recalibré el umbral con el criterio del TP5, unos puntos debajo de lo medido:
+  **50/75 → 40/40**.
+- **El #44 y el #60 chocaron en `go.mod`/`go.sum`:** se resolvió quedándose con las dos
+  versiones (`jwt` 5.3.1 y `sentry-go` 0.45.1) y regenerando `go.sum` con `go mod tidy`.
+- **El deploy hook de Render no contestó en 30 s** en una corrida; Render no había creado el
+  deploy, así que reintenté solo los jobs fallidos y pasaron.
+- **CodeQL** quedó con la configuración por defecto (Go, JS/TS y workflows) y su primer análisis
+  terminado. **Push protection** ya estaba activa: viene por defecto en un repo público.
+
+**Uso de IA:** usé un asistente de IA para el `dependabot.yml`, el `HEAD` de `/healthz`, la
+integración de Sentry, las tres actualizaciones de dependencias y para sacar los números de
+Sentry por su API. Lo verifiqué con la lista de alertas de Dependabot en cero, `npm audit` sin
+hallazgos, la etapa `test` de cada Dockerfile, con
+`curl -I` a `/healthz` en QA y PROD antes de crear el monitor, con los tests y las corridas del
+pipeline en verde, comprobando que el JS de QA tuviera el DSN, y con el error real del color
+llegando a Sentry desde PROD.
