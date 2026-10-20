@@ -1,4 +1,4 @@
-import { Routes, Route, Link } from 'react-router-dom'
+import { Routes, Route, Link } from 'react-router'
 
 import Layout from './components/Layout'
 import RutaProtegida from './components/RutaProtegida'

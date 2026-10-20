@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router'
 import { api } from '../services/api'
 import { useCarrito } from '../hooks/useCarrito'
 import { Cargando, AvisoError, AvisoExito } from '../components/Aviso'

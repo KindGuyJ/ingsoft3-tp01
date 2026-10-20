@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router'
 import { api } from '../services/api'
 import { confirmarCompra } from '../services/compra'
 import { useCarrito } from '../hooks/useCarrito'

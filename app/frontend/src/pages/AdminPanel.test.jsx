@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter } from 'react-router'
 
 import AdminPanel from './AdminPanel'
 import { AuthProvider } from '../hooks/useAuth'

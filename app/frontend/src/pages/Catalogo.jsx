@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 import { api } from '../services/api'
 import ProductoCard from '../components/ProductoCard'
 import { Cargando, AvisoError } from '../components/Aviso'
