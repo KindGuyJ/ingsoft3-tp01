@@ -18,7 +18,12 @@ const PRODUCTOS = [
 const vivo = { ok: true, status: 200, json: () => Promise.resolve(PRODUCTOS) }
 
 describe('Catalogo', () => {
-  it.each([429, 502])('con %i avisa que el backend no responde y se recupera con Reintentar', async (status) => {
+  // Cada caso con su mensaje: el 429 (API dormida) no se arregla en segundos y
+  // el 502 (arrancando) sí; si los dos dijeran lo mismo, uno estaría mintiendo.
+  it.each([
+    [429, /en reposo por inactividad/i],
+    [502, /todavía no responde/i],
+  ])('con %i avisa con su mensaje y se recupera con Reintentar', async (status, mensaje) => {
     const caido = { ok: false, status, json: () => Promise.reject(new Error('no es JSON')) }
     // Las dos primeras llamadas (productos y categorías) fallan; las siguientes andan.
     globalThis.fetch = vi.fn()
@@ -34,7 +39,7 @@ describe('Catalogo', () => {
       </MemoryRouter>,
     )
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/no está disponible/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent(mensaje)
     expect(screen.queryByText(/no hay productos/i)).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: /reintentar/i }))
