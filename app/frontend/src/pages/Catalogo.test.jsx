@@ -7,18 +7,19 @@ import { MemoryRouter } from 'react-router'
 import Catalogo from './Catalogo'
 import { CarritoProvider } from '../hooks/useCarrito'
 
-// Issue #11: con el backend todavía arrancando, nginx contesta 502. El catálogo
-// tiene que avisar (no quedar vacío) y poder recuperarse sin recargar la página.
+// Issue #11: con el backend todavía arrancando contesta nginx (502) o Render
+// (429). El catálogo tiene que avisar (no quedar vacío) y poder recuperarse sin
+// recargar la página.
 
 const PRODUCTOS = [
   { id: 1, nombre: 'Remera basica', precio: 12500, categoria: 'remeras', imagenes: [], variantes: [] },
 ]
 
-const caido = { ok: false, status: 502, json: () => Promise.reject(new Error('no es JSON')) }
 const vivo = { ok: true, status: 200, json: () => Promise.resolve(PRODUCTOS) }
 
 describe('Catalogo', () => {
-  it('avisa si el backend no responde y se recupera con Reintentar', async () => {
+  it.each([429, 502])('con %i avisa que el backend no responde y se recupera con Reintentar', async (status) => {
+    const caido = { ok: false, status, json: () => Promise.reject(new Error('no es JSON')) }
     // Las dos primeras llamadas (productos y categorías) fallan; las siguientes andan.
     globalThis.fetch = vi.fn()
       .mockResolvedValueOnce(caido)
