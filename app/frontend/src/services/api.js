@@ -39,7 +39,12 @@ async function request(path, { method = 'GET', body, auth = false } = {}) {
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    const err = new Error(data.error || `Error ${res.status}`)
+    // 502/503/504 los genera nginx cuando el backend todavía no arrancó (o está
+    // despertando en Render): no traen JSON y "Error 502" no le dice nada al usuario.
+    const mensaje = [502, 503, 504].includes(res.status)
+      ? 'El servidor todavía no responde. Probá de nuevo en unos segundos.'
+      : data.error || `Error ${res.status}`
+    const err = new Error(mensaje)
     // El status viaja en el error para que las pantallas puedan distinguir un
     // 401 (token vencido → hay que relogearse) de un 409 (regla de negocio).
     err.status = res.status
