@@ -15,6 +15,9 @@ export default function Catalogo() {
   const [categorias, setCategorias] = useState([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
+  // Reintentar = sumarle uno a este contador. Está en las dependencias de los dos
+  // efectos, así que cambiarlo vuelve a pedir productos y categorías.
+  const [intento, setIntento] = useState(0)
 
   // El filtro lo resuelve el backend (GET /api/productos?categoria=), que ya
   // sabe hacer esa consulta. Reimplementarlo en el front sería duplicarlo.
@@ -31,16 +34,16 @@ export default function Catalogo() {
     // La respuesta de una petición vieja puede llegar después de una nueva; el
     // flag evita que pise el resultado correcto.
     return () => { vigente = false }
-  }, [categoria])
+  }, [categoria, intento])
 
-  // Las categorías salen del catálogo COMPLETO y se piden una sola vez: si se
-  // derivaran de la lista ya filtrada, al elegir "remeras" desaparecerían todas
-  // las demás opciones y no habría forma de volver.
+  // Las categorías salen del catálogo COMPLETO y se piden una sola vez (o al
+  // reintentar): si se derivaran de la lista ya filtrada, al elegir "remeras"
+  // desaparecerían todas las demás opciones y no habría forma de volver.
   useEffect(() => {
     api.listarProductos()
       .then((ps) => setCategorias([...new Set(ps.map((p) => p.categoria).filter(Boolean))].sort()))
       .catch(() => setCategorias([]))
-  }, [])
+  }, [intento])
 
   function filtrar(cat) {
     setParams(cat ? { categoria: cat } : {})
@@ -77,6 +80,13 @@ export default function Catalogo() {
       </div>
 
       <AvisoError>{error}</AvisoError>
+      {error && (
+        <div className="acciones">
+          <button type="button" className="primario" onClick={() => setIntento((n) => n + 1)}>
+            Reintentar
+          </button>
+        </div>
+      )}
       {cargando && <Cargando />}
 
       {!cargando && !error && productos.length === 0 && (
