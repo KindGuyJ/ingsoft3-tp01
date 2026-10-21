@@ -7,18 +7,24 @@ import { MemoryRouter } from 'react-router'
 import Catalogo from './Catalogo'
 import { CarritoProvider } from '../hooks/useCarrito'
 
-// Issue #11: con el backend todavía arrancando, nginx contesta 502. El catálogo
-// tiene que avisar (no quedar vacío) y poder recuperarse sin recargar la página.
+// Issue #11: con el backend sin atender contesta nginx (502) o Render
+// (429, API dormida). El catálogo tiene que avisar (no quedar vacío) y poder recuperarse sin
+// recargar la página.
 
 const PRODUCTOS = [
   { id: 1, nombre: 'Remera basica', precio: 12500, categoria: 'remeras', imagenes: [], variantes: [] },
 ]
 
-const caido = { ok: false, status: 502, json: () => Promise.reject(new Error('no es JSON')) }
 const vivo = { ok: true, status: 200, json: () => Promise.resolve(PRODUCTOS) }
 
 describe('Catalogo', () => {
-  it('avisa si el backend no responde y se recupera con Reintentar', async () => {
+  // Cada caso con su mensaje: el 429 (API dormida) no se arregla en segundos y
+  // el 502 (arrancando) sí; si los dos dijeran lo mismo, uno estaría mintiendo.
+  it.each([
+    [429, /en reposo por inactividad/i],
+    [502, /todavía no responde/i],
+  ])('con %i avisa con su mensaje y se recupera con Reintentar', async (status, mensaje) => {
+    const caido = { ok: false, status, json: () => Promise.reject(new Error('no es JSON')) }
     // Las dos primeras llamadas (productos y categorías) fallan; las siguientes andan.
     globalThis.fetch = vi.fn()
       .mockResolvedValueOnce(caido)
@@ -33,7 +39,7 @@ describe('Catalogo', () => {
       </MemoryRouter>,
     )
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/todavía no responde/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent(mensaje)
     expect(screen.queryByText(/no hay productos/i)).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: /reintentar/i }))

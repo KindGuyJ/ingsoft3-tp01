@@ -39,11 +39,20 @@ async function request(path, { method = 'GET', body, auth = false } = {}) {
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    // 502/503/504 los genera nginx cuando el backend todavía no arrancó (o está
-    // despertando en Render): no traen JSON y "Error 502" no le dice nada al usuario.
-    const mensaje = [502, 503, 504].includes(res.status)
-      ? 'El servidor todavía no responde. Probá de nuevo en unos segundos.'
-      : data.error || `Error ${res.status}`
+    // Cuando el backend no está atendiendo no contesta él sino lo que tiene
+    // delante, sin JSON. Son dos casos distintos y el usuario tiene que saberlo:
+    // - 429: Render con la API dormida (`hibernate-rate-limited`). La API no tiene
+    //   rate limit propio, así que un 429 siempre es esto. No se arregla solo:
+    //   limitación aceptada, ver decisiones.md.
+    // - 502/503/504: nginx con el backend arrancando (compose). Se arregla en segundos.
+    let mensaje
+    if (res.status === 429) {
+      mensaje = 'El servidor está en reposo por inactividad. Probá de nuevo más tarde.'
+    } else if ([502, 503, 504].includes(res.status)) {
+      mensaje = 'El servidor todavía no responde. Probá de nuevo en unos segundos.'
+    } else {
+      mensaje = data.error || `Error ${res.status}`
+    }
     const err = new Error(mensaje)
     // El status viaja en el error para que las pantallas puedan distinguir un
     // 401 (token vencido → hay que relogearse) de un 409 (regla de negocio).
