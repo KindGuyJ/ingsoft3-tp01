@@ -7,8 +7,8 @@ import { MemoryRouter } from 'react-router'
 import Catalogo from './Catalogo'
 import { CarritoProvider } from '../hooks/useCarrito'
 
-// Issue #11: con el backend todavía arrancando contesta nginx (502) o Render
-// (429). El catálogo tiene que avisar (no quedar vacío) y poder recuperarse sin
+// Issue #11: con el backend sin atender contesta nginx (502) o Render
+// (429, API dormida). El catálogo tiene que avisar (no quedar vacío) y poder recuperarse sin
 // recargar la página.
 
 const PRODUCTOS = [
@@ -34,7 +34,7 @@ describe('Catalogo', () => {
       </MemoryRouter>,
     )
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/todavía no responde/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/no está disponible/i)
     expect(screen.queryByText(/no hay productos/i)).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: /reintentar/i }))

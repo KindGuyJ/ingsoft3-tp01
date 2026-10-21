@@ -39,11 +39,12 @@ async function request(path, { method = 'GET', body, auth = false } = {}) {
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    // Mientras el backend arranca no contesta él sino lo que tiene delante: nginx
-    // (502/503/504) o Render despertando el servicio (429; la API no tiene rate
-    // limit propio). No traen JSON y "Error 429" no le dice nada al usuario.
+    // Cuando el backend no está atendiendo no contesta él sino lo que tiene
+    // delante: nginx (502/503/504, p. ej. mientras arranca en compose) o Render
+    // con la API dormida (429 `hibernate-rate-limited`: limitación aceptada, ver
+    // decisiones.md). Ninguno trae JSON y "Error 429" no le dice nada al usuario.
     const mensaje = [429, 502, 503, 504].includes(res.status)
-      ? 'El servidor todavía no responde. Probá de nuevo en unos segundos.'
+      ? 'El servidor no está disponible en este momento. Probá de nuevo más tarde.'
       : data.error || `Error ${res.status}`
     const err = new Error(mensaje)
     // El status viaja en el error para que las pantallas puedan distinguir un
